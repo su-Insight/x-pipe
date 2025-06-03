@@ -18,11 +18,11 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5
       - name: Set up JDK 8
-        uses: actions/setup-java@v2
+        uses: actions/setup-java@91d3aa4956ec4a53e477c4907347b5e3481be8c9
         with:
           java-version: '8'
           distribution: 'adopt'
@@ -35,7 +35,7 @@ jobs:
           sh install.sh
 
       - name: Cache Maven packages
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: ~/.m2
           key: ${{ runner.os }}-m2-2022-11-30-${{ hashFiles('**/pom.xml') }}
@@ -46,7 +46,7 @@ jobs:
         run: mvn clean install -Plocal
 
       - name: codecov
-        uses: codecov/codecov-action@v2.0.1
+        uses: codecov/codecov-action@c585afe366f940d214dc09df2664c06d7fe07052
         with:
           token: 50484ce1-6e23-4309-87ac-e2cf9d3a3b4f
           file: ${{ github.workspace }}/**/target/site/jacoco/jacoco.xml
