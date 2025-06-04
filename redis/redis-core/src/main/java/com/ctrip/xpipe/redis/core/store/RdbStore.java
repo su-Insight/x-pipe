@@ -1,6 +1,7 @@
 package com.ctrip.xpipe.redis.core.store;
 
 import com.ctrip.xpipe.api.lifecycle.Destroyable;
+import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
 import io.netty.buffer.ByteBuf;
 
 import java.io.Closeable;
@@ -13,9 +14,29 @@ public interface RdbStore extends Destroyable, Closeable{
 		Writing, Success, Fail
 	};
 
-	boolean updateRdbGtidSet(String gtidSet);
+	public enum Type {
+		UNKNOWN, NORMAL, RORDB
+	}
+
+	void updateRdbType(Type type);
+
+	Type getRdbType();
+
+	String getReplId();
+
+	long getRdbOffset();
+
+	EofType getEofType();
 
 	String getGtidSet();
+
+	File getRdbFile();
+
+	boolean updateRdbGtidSet(String gtidSet);
+
+	boolean isGtidSetInit();
+
+	boolean supportGtidSet();
 
 	int writeRdb(ByteBuf buf) throws IOException;
 

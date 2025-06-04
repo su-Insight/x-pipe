@@ -2,6 +2,8 @@ package com.ctrip.xpipe.redis.core.redis.rdb;
 
 import com.ctrip.xpipe.redis.core.redis.operation.RedisOp;
 
+import java.util.Map;
+
 /**
  * @author lishanglin
  * date 2022/5/28
@@ -13,5 +15,7 @@ public interface RdbParseListener {
     void onAux(String key, String value);
 
     void onFinish(RdbParser<?> parser);
+
+    void onAuxFinish(Map<String, String> auxMap);
 
 }

@@ -28,6 +28,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -127,23 +129,6 @@ public class DefaultRedisSlave implements RedisSlave {
 			waitForRdb();
 		} else {
 			getLogger().info("[waitForRdbDumping][already start wait]{}", this);
-		}
-	}
-
-	@Override
-	public void waitForGtidParse() {
-
-		if(this.slaveState == SLAVE_STATE.REDIS_REPL_WAIT_RDB_GTIDSET){
-			getLogger().info("[waitForGtidParse][already waiting]{}", this);
-			return;
-		}
-
-		this.slaveState = SLAVE_STATE.REDIS_REPL_WAIT_RDB_GTIDSET;
-
-		if (null == pingFuture || pingFuture.isDone()) {
-			waitForRdb();
-		} else {
-			getLogger().info("[waitForGtidParse][already start wait]{}", this);
 		}
 	}
 
@@ -375,11 +360,6 @@ public class DefaultRedisSlave implements RedisSlave {
 		Object command = cmd;
 
 		if (cmd instanceof RedisOp) {
-			if (shouldFilter((RedisOp) cmd)) {
-				ChannelPromise result = channel().newPromise();
-			    result.setSuccess();
-			    return result;
-			}
 		    command = ((RedisOp) cmd).buildRESP();
 		}
 
@@ -387,11 +367,6 @@ public class DefaultRedisSlave implements RedisSlave {
 		future.addListener(writeExceptionListener);
 		return future;
 	}
-
-	@VisibleForTesting
-	protected boolean shouldFilter(RedisOp redisOp) {
-		return false;
-    }
 
 	@Override
 	public String info() {
@@ -443,6 +418,11 @@ public class DefaultRedisSlave implements RedisSlave {
 	@Override
 	public boolean supportProgress(Class<? extends ReplicationProgress<?>> clazz) {
 		return clazz.equals(OffsetReplicationProgress.class);
+	}
+
+	@Override
+	public boolean supportRdb(RdbStore.Type rdbType) {
+		return (RdbStore.Type.RORDB.equals(rdbType) && capaOf(CAPA.RORDB)) || RdbStore.Type.NORMAL.equals(rdbType);
 	}
 
 	private int remotePort() {
@@ -506,7 +486,8 @@ public class DefaultRedisSlave implements RedisSlave {
 			getLogger().info("[doRealClose]{}", this);
 			closeState.setClosed();
 			redisClient.close();
-			psyncExecutor.shutdownNow();
+			/* shutdown single thread pool after other tasks finished */
+			psyncExecutor.submit(psyncExecutor::shutdown);
 			scheduled.shutdownNow();
 		}
 	}

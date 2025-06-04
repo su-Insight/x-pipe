@@ -5,6 +5,7 @@ import com.ctrip.xpipe.exception.XpipeRuntimeException;
 import com.ctrip.xpipe.redis.console.constant.XPipeConsoleConstant;
 import com.ctrip.xpipe.redis.console.controller.api.data.meta.KeeperContainerCreateInfo;
 import com.ctrip.xpipe.redis.console.exception.BadRequestException;
+import com.ctrip.xpipe.redis.console.keeper.entity.KeeperContainerDiskType;
 import com.ctrip.xpipe.redis.console.model.*;
 import com.ctrip.xpipe.redis.console.query.DalQuery;
 import com.ctrip.xpipe.redis.console.service.*;
@@ -251,7 +252,8 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
             .setKeepercontainerIp(createInfo.getKeepercontainerIp())
             .setKeepercontainerPort(createInfo.getKeepercontainerPort())
             .setKeepercontainerOrgId(org.getId())
-            .setKeepercontainerActive(createInfo.isActive());
+            .setKeepercontainerActive(createInfo.isActive())
+            .setKeepercontainerDiskType(KeeperContainerDiskType.lookup(createInfo.getDiskType()).name());
 
     queryHandler.handleInsert(new DalQuery<Integer>() {
       @Override
@@ -275,7 +277,8 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
         KeeperContainerCreateInfo info = new KeeperContainerCreateInfo()
                 .setDcName(dc).setActive(input.isKeepercontainerActive())
                 .setKeepercontainerIp(input.getKeepercontainerIp())
-                .setKeepercontainerPort(input.getKeepercontainerPort());
+                .setKeepercontainerPort(input.getKeepercontainerPort())
+                .setDiskType(input.getKeepercontainerDiskType());
         if (org != null) {
           info.setKeepercontainerOrgId(org.getOrgId()).setOrgName(org.getOrgName());
         } else {
@@ -317,6 +320,11 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
     }
 
     keepercontainerTbl.setKeepercontainerActive(createInfo.isActive());
+
+    KeeperContainerDiskType type = KeeperContainerDiskType.lookup(createInfo.getDiskType(), null);
+    if (null != type) {
+      keepercontainerTbl.setKeepercontainerDiskType(type.name());
+    }
     queryHandler.handleUpdate(new DalQuery<Integer>() {
       @Override
       public Integer doQuery() throws DalException {
@@ -421,6 +429,11 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
 
     proto.setKeepercontainerActive(keeperContainerInfoModel.isActive());
 
+    KeeperContainerDiskType type = KeeperContainerDiskType.lookup(keeperContainerInfoModel.getDiskType(), null);
+    if (null != type) {
+      proto.setKeepercontainerDiskType(type.name());
+    }
+
     queryHandler.handleQuery(new DalQuery<Integer>() {
       @Override
       public Integer doQuery() throws DalException {
@@ -466,6 +479,7 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
       model.setAddr(new HostPort(baseInfo.getKeepercontainerIp(), baseInfo.getKeepercontainerPort()));
       model.setDcName(baseInfo.getDcInfo().getDcName());
       model.setOrgName(baseInfo.getOrgInfo().getOrgName());
+      model.setDiskType(baseInfo.getKeepercontainerDiskType());
 
       if (baseInfo.getAzId() != 0) {
         AzTbl aztbl = azService.getAvailableZoneTblById(baseInfo.getAzId());

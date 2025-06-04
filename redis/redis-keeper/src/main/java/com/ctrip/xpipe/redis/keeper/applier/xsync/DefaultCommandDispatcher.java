@@ -1,5 +1,6 @@
 package com.ctrip.xpipe.redis.keeper.applier.xsync;
 
+import com.ctrip.xpipe.api.monitor.EventMonitor;
 import com.ctrip.xpipe.client.redis.AsyncRedisClient;
 import com.ctrip.xpipe.exception.XpipeRuntimeException;
 import com.ctrip.xpipe.gtid.GtidSet;
@@ -20,13 +21,12 @@ import com.ctrip.xpipe.redis.keeper.applier.threshold.GTIDDistanceThreshold;
 import com.ctrip.xpipe.tuple.Pair;
 import com.ctrip.xpipe.utils.VisibleForTesting;
 import io.netty.buffer.ByteBuf;
+import org.apache.zookeeper.common.StringUtils;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -56,6 +56,9 @@ public class DefaultCommandDispatcher extends AbstractInstanceComponent implemen
 
     @InstanceDependency
     public AtomicReference<GTIDDistanceThreshold> gtidDistanceThreshold;
+
+    @InstanceDependency
+    public AtomicLong offsetRecorder;
 
     /* why not a global resource */
     @VisibleForTesting
@@ -94,7 +97,7 @@ public class DefaultCommandDispatcher extends AbstractInstanceComponent implemen
     }
 
     @Override
-    public void onFullSync(GtidSet rdbGtidSet) {
+    public void onFullSync(GtidSet rdbGtidSet, long rdbOffset) {
 
         logger.info("[onFullSync] rdbGtidSet={}", rdbGtidSet);
 
@@ -106,12 +109,17 @@ public class DefaultCommandDispatcher extends AbstractInstanceComponent implemen
     }
 
     @Override
-    public void beginReadRdb(EofType eofType, GtidSet rdbGtidSet) {
+    public void beginReadRdb(EofType eofType, GtidSet rdbGtidSet, long rdbOffset) {
 
         logger.info("[beginReadRdb] eofType={}, rdbGtidSet={}", eofType, rdbGtidSet);
 
+        if (rdbGtidSet.isEmpty()) {
+            logger.info("[beginReadRdb] rdbGtidSet is empty, skip merge start");
+            return;
+        }
+
         //ctrip.merge_start
-        sequenceController.submit(new DefaultBroadcastCommand(client, new RedisOpMergeStart()));
+        sequenceController.submit(new DefaultBroadcastCommand(client, new RedisOpMergeStart()), 0);
     }
 
     @Override
@@ -120,30 +128,36 @@ public class DefaultCommandDispatcher extends AbstractInstanceComponent implemen
             rdbParser.read(rdbData);
         } catch (Throwable t) {
             logger.error("[onRdbData] unlikely - error", t);
+            throw t;
         }
     }
 
     @Override
-    public void endReadRdb(EofType eofType, GtidSet rdbGtidSet) {
+    public void endReadRdb(EofType eofType, GtidSet rdbGtidSet, long rdbOffset) {
 
         logger.info("[endReadRdb] eofType={}, rdbGtidSet={}", eofType, rdbGtidSet);
 
-        //ctrip.merge_start [gtid_set]
-        sequenceController.submit(new DefaultBroadcastCommand(client, new RedisOpMergeEnd(rdbGtidSet.toString())));
+        if (rdbGtidSet.isEmpty()) {
+            logger.info("[endReadRdb] rdbGtidSet is empty, skip merge end");
+            return;
+        }
+
+        //ctrip.merge_end [gtid_set]
+        sequenceController.submit(new DefaultBroadcastCommand(client, new RedisOpMergeEnd(rdbGtidSet.toString())), 0);
     }
 
     @Override
-    public void onContinue(GtidSet gtidSetExcluded) {
+    public void onContinue(GtidSet gtidSetExcluded, long continueOffset) {
         logger.info("[onContinue]");
         this.resetState(gtidSetExcluded);
     }
 
     @Override
-    public void onCommand(Object[] rawCmdArgs) {
+    public void onCommand(long commandOffset, Object[] rawCmdArgs) {
         RedisOp redisOp = null;
         try {
             redisOp = parser.parse(rawCmdArgs);
-            onRedisOp(redisOp);
+            doOnRedisOp(redisOp, commandOffset);
         } catch (Throwable unlikely) {
             try {
                 logger.error("[onCommand] unlikely - when doing partial sync]", unlikely);
@@ -246,30 +260,66 @@ public class DefaultCommandDispatcher extends AbstractInstanceComponent implemen
         return rt;
     }
 
-    private void addTransactionStart(RedisOpCommand<?> multiCommand) {
+    private void addTransactionStart(RedisOpCommand<?> multiCommand, long commandOffsetToAccumulate) {
         transactionCommand.set(new TransactionCommand());
-        transactionCommand.get().addTransactionStart(multiCommand);
+        transactionCommand.get().addTransactionStart(multiCommand, commandOffsetToAccumulate);
     }
 
-    private void addTransactionEndAndSubmit(RedisOpCommand<?> execCommand) {
-        transactionCommand.get().addTransactionEnd(execCommand);
-        sequenceController.submit(transactionCommand.getAndSet(null));
+    private void addTransactionEndAndSubmit(RedisOpCommand<?> execCommand, long commandOffsetToAccumulate) {
+        transactionCommand.get().addTransactionEnd(execCommand, commandOffsetToAccumulate);
+        TransactionCommand command = transactionCommand.getAndSet(null);
+        sequenceController.submit(command, command.commandOffset());
     }
 
-    private void addIfTransactionCommandsOrSubmit(RedisOpCommand<?> redisOpCommand) {
+    private void addIfTransactionCommandsOrSubmit(RedisOpCommand<?> redisOpCommand, long commandOffsetToAccumulate) {
         if (transactionCommand.get() != null) {
-            transactionCommand.get().addTransactionCommands(redisOpCommand);
+            transactionCommand.get().addTransactionCommands(redisOpCommand, commandOffsetToAccumulate);
         } else {
-            sequenceController.submit(redisOpCommand);
+            sequenceController.submit(redisOpCommand, commandOffsetToAccumulate);
         }
     }
 
-    @Override
-    public void onRedisOp(RedisOp redisOp) {
+    @VisibleForTesting
+    protected boolean shouldFilter(RedisOp redisOp) {
+        if (RedisOpType.PUBLISH.equals(redisOp.getOpType())) {
+            int length = redisOp.buildRawOpArgs().length;
+            String channel;
+            if (length == 3) {
+                channel = new String(redisOp.buildRawOpArgs()[1]);
+            } else if (length >= 5) {
+                channel = new String(redisOp.buildRawOpArgs()[4]);
+            } else {
+                logger.warn("publish command {} length={} unexpected, filtered", redisOp, length);
+                return true;
+            }
+            if (!channel.startsWith("xpipe-asymmetric-")) {
+                logger.warn("publish command {} channel: [{}] filtered", redisOp, channel);
+                return true;
+            }
+        }
+        if (redisOp.getOpType().isSwallow()) {
+            logger.info("[onRedisOp] swallow redisOp: {}", redisOp.toString());
+            EventMonitor.DEFAULT.logEvent("APPLIER.SWALLOW.OP", getCmd(redisOp));
+        }
+        return redisOp.getOpType().isSwallow();
+    }
 
+    private String getCmd(RedisOp redisOp) {
+        byte[][] rawOpArgs = redisOp.buildRawOpArgs();
+        if (Objects.isNull(redisOp.getOpGtid()) && rawOpArgs.length > 0) {
+            return new String(redisOp.buildRawOpArgs()[0]);
+        }
+        if (!Objects.isNull(redisOp.getOpGtid()) && rawOpArgs.length > 3) {
+            return new String(redisOp.buildRawOpArgs()[3]);
+        }
+        return redisOp.getOpType().name();
+    }
+
+    private void doOnRedisOp(RedisOp redisOp, long commandOffsetToAccumulate) {
         logger.debug("[onRedisOp] redisOpType={}, gtid={}", redisOp.getOpType(), redisOp.getOpGtid());
 
         if (RedisOpType.PING.equals(redisOp.getOpType())) {
+            offsetRecorder.addAndGet(commandOffsetToAccumulate);
             return;
         }
         if (RedisOpType.SELECT.equals(redisOp.getOpType())) {
@@ -280,6 +330,7 @@ public class DefaultCommandDispatcher extends AbstractInstanceComponent implemen
                 logger.error("[onRedisOp] unlikely - fail to select db : {}", Arrays.toString(redisOp.buildRawOpArgs()[1]));
                 logger.error("[onRedisOp] unlikely - fail to select db]", unlikely);
             }
+            offsetRecorder.addAndGet(commandOffsetToAccumulate);
             return;
         }
 
@@ -289,15 +340,41 @@ public class DefaultCommandDispatcher extends AbstractInstanceComponent implemen
             return;
         }
 
-        if (RedisOpType.MULTI.equals(redisOp.getOpType())) {
-            addTransactionStart(new DefaultMultiCommand(client, redisOp));
-        } else if (RedisOpType.EXEC.equals(redisOp.getOpType())) {
-            addTransactionEndAndSubmit(new DefaultExecCommand(client, redisOp));
-        } else if (redisOp instanceof RedisMultiKeyOp) {
-            addIfTransactionCommandsOrSubmit(new MultiDataCommand(client, (RedisMultiKeyOp) redisOp, workerThreads));
-        } else {
-            addIfTransactionCommandsOrSubmit(new DefaultDataCommand(client, redisOp));
+        if (shouldFilter(redisOp)) {
+            addLwm(redisOp);
+            offsetRecorder.addAndGet(commandOffsetToAccumulate);
+            return;
         }
+
+        if (RedisOpType.MULTI.equals(redisOp.getOpType())) {
+            addTransactionStart(new DefaultMultiCommand(client, redisOp), commandOffsetToAccumulate);
+        } else if (RedisOpType.EXEC.equals(redisOp.getOpType())) {
+            addTransactionEndAndSubmit(new DefaultExecCommand(client, redisOp), commandOffsetToAccumulate);
+        } else if (redisOp instanceof RedisMultiKeyOp) {
+            addIfTransactionCommandsOrSubmit(new MultiDataCommand(client, (RedisMultiKeyOp) redisOp, workerThreads), commandOffsetToAccumulate);
+        } else {
+            addIfTransactionCommandsOrSubmit(new DefaultDataCommand(client, redisOp), commandOffsetToAccumulate);
+        }
+    }
+
+    private void addLwm(RedisOp redisOp) {
+        String gtid = redisOp.getOpGtid();
+        if (StringUtils.isBlank(gtid)) {
+            return;
+        }
+        stateThread.execute(() -> {
+            try {
+                logger.debug("[addLwm][start] gtid:{}", gtid);
+                gtid_executed.get().add(redisOp.getOpGtid());
+            } catch (Throwable t) {
+                logger.error("[addLwm][fail] gtid:{}", gtid, t);
+            }
+        });
+    }
+
+    @Override
+    public void onRedisOp(RedisOp redisOp) {
+        doOnRedisOp(redisOp, 0);
     }
 
     @Override
@@ -307,6 +384,11 @@ public class DefaultCommandDispatcher extends AbstractInstanceComponent implemen
 
     @Override
     public void onFinish(RdbParser<?> parser) {
+
+    }
+
+    @Override
+    public void onAuxFinish(Map<String, String> auxMap) {
 
     }
 }

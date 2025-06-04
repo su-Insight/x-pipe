@@ -1,7 +1,10 @@
 package com.ctrip.xpipe.redis.console.service.impl;
 
+import com.ctrip.xpipe.api.command.CommandFuture;
 import com.ctrip.xpipe.api.foundation.FoundationService;
 import com.ctrip.xpipe.cluster.ClusterType;
+import com.ctrip.xpipe.command.AbstractCommand;
+import com.ctrip.xpipe.command.ParallelCommandChain;
 import com.ctrip.xpipe.endpoint.HostPort;
 import com.ctrip.xpipe.redis.checker.healthcheck.BiDirectionSupport;
 import com.ctrip.xpipe.redis.checker.healthcheck.OneWaySupport;
@@ -25,10 +28,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import javax.annotation.Resource;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import static com.ctrip.xpipe.spring.AbstractSpringConfigContext.GLOBAL_EXECUTOR;
 
 /**
  * @author chen.zhu
@@ -57,6 +64,9 @@ public class DefaultDelayService extends CheckerRedisDelayManager implements Del
     
     @Autowired
     private FoundationService foundationService;
+
+    @Resource(name = GLOBAL_EXECUTOR)
+    protected ExecutorService executors;
 
     @Override
     public void updateRedisDelays(Map<HostPort, Long> redisDelays) {
@@ -221,12 +231,27 @@ public class DefaultDelayService extends CheckerRedisDelayManager implements Del
         }
 
         UnhealthyInfoModel infoAggregation = new UnhealthyInfoModel();
+        ParallelCommandChain commandChain = new ParallelCommandChain(executors);
+        Map<String, CommandFuture<UnhealthyInfoModel>> results = new HashMap<>();
         for (String dcId : xpipeMeta.getDcs().keySet()) {
-            UnhealthyInfoModel unhealthyInfo = getDcActiveClusterUnhealthyInstance(dcId);
-            if (null == unhealthyInfo) infoAggregation.getAttachFailDc().add(dcId);
-            else infoAggregation.merge(unhealthyInfo);
+            FetchDcUnhealthyInstanceCmd cmd = new FetchDcUnhealthyInstanceCmd(dcId);
+            commandChain.add(cmd);
+            results.put(dcId, cmd.future());
         }
 
+        try {
+            commandChain.execute().sync();
+            for (Map.Entry<String, CommandFuture<UnhealthyInfoModel>> result: results.entrySet()) {
+                CommandFuture<UnhealthyInfoModel> commandFuture = result.getValue();
+                if (commandFuture.isSuccess() && null != commandFuture.get()) {
+                    infoAggregation.merge(commandFuture.get());
+                } else {
+                    infoAggregation.getAttachFailDc().add(result.getKey());
+                }
+            }
+        } catch (Throwable th) {
+            logger.info("[getAllUnhealthyInstance][fail] {}", th.getMessage());
+        }
         return infoAggregation;
     }
 
@@ -239,4 +264,29 @@ public class DefaultDelayService extends CheckerRedisDelayManager implements Del
     public void setFoundationService(FoundationService foundationService) {
         this.foundationService = foundationService;
     }
+
+    class FetchDcUnhealthyInstanceCmd extends AbstractCommand<UnhealthyInfoModel> {
+
+        private String dc;
+
+        public FetchDcUnhealthyInstanceCmd(String dc) {
+            this.dc = dc;
+        }
+
+        @Override
+        protected void doExecute() throws Throwable {
+            future().setSuccess(getDcActiveClusterUnhealthyInstance(dc));
+        }
+
+        @Override
+        protected void doReset() {
+            // do nothing
+        }
+
+        @Override
+        public String getName() {
+            return getClass().getSimpleName();
+        }
+    }
+
 }

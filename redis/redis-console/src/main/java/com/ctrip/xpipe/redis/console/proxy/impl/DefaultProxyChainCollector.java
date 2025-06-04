@@ -13,6 +13,8 @@ import com.ctrip.xpipe.redis.console.proxy.ProxyChainCollector;
 import com.ctrip.xpipe.redis.console.reporter.DefaultHttpService;
 import com.ctrip.xpipe.spring.AbstractProfile;
 import com.ctrip.xpipe.utils.VisibleForTesting;
+import com.ctrip.xpipe.utils.XpipeThreadFactory;
+import com.ctrip.xpipe.utils.job.DynamicDelayPeriodTask;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -24,33 +26,28 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestOperations;
 
-import javax.annotation.Resource;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.ctrip.xpipe.spring.AbstractSpringConfigContext.SCHEDULED_EXECUTOR;
 import static java.lang.String.format;
 
 @Component
 @Profile(AbstractProfile.PROFILE_NAME_PRODUCTION)
 public class DefaultProxyChainCollector extends AbstractStartStoppable implements ProxyChainCollector {
 
-    @Resource(name = SCHEDULED_EXECUTOR)
-    private ScheduledExecutorService scheduled;
-
-    @Autowired
     private ProxyChainAnalyzer proxyChainAnalyzer;
 
-    @Autowired
     private ConsoleConfig consoleConfig;
 
     private DefaultHttpService httpService = new DefaultHttpService();
 
-    private ScheduledFuture future;
+    private DynamicDelayPeriodTask collectTask;
+
+    private ScheduledExecutorService scheduled;
 
     private AtomicBoolean taskTrigger = new AtomicBoolean(false);
 
@@ -61,6 +58,15 @@ public class DefaultProxyChainCollector extends AbstractStartStoppable implement
     private volatile Map<String, DcClusterShardPeer> tunnelClusterShardMap = Maps.newConcurrentMap();
 
     private Map<String, Map<DcClusterShardPeer, ProxyChain>> dcProxyChainMap = Maps.newConcurrentMap();
+
+    @Autowired
+    public DefaultProxyChainCollector(ProxyChainAnalyzer proxyChainAnalyzer, ConsoleConfig consoleConfig) {
+        this.proxyChainAnalyzer = proxyChainAnalyzer;
+        this.consoleConfig = consoleConfig;
+        this.scheduled = Executors.newScheduledThreadPool(1, XpipeThreadFactory.create(getClass().getSimpleName()));
+        this.collectTask = new DynamicDelayPeriodTask(getClass().getSimpleName(), this::fetchAllDcProxyChains,
+                consoleConfig::getProxyInfoCollectInterval, scheduled);
+    }
 
     @Override
     public void isleader() {
@@ -114,16 +120,20 @@ public class DefaultProxyChainCollector extends AbstractStartStoppable implement
 
     @Override
     protected void doStart() throws Exception {
-        scheduled.scheduleWithFixedDelay(() -> {
-            if (!taskTrigger.get()) {
-                return;
-            }
-            logger.debug("proxy chain collector started");
-            getAllDcProxyChains();
-        }, getStartTime(), getPeriodic(), TimeUnit.MILLISECONDS);
+        collectTask.start();
     }
 
-    private void getAllDcProxyChains() {
+    @Override
+    protected void doStop() throws Exception {
+        collectTask.stop();
+        clear();
+    }
+
+    protected void fetchAllDcProxyChains() {
+        if (!taskTrigger.get()) {
+            return;
+        }
+
         ParallelCommandChain commandChain = new ParallelCommandChain(MoreExecutors.directExecutor(), false);
         consoleConfig.getConsoleDomains().forEach((dc, domain)->{
             logger.debug("begin to get proxy chain from dc {} {}", dc, domain);
@@ -152,24 +162,32 @@ public class DefaultProxyChainCollector extends AbstractStartStoppable implement
         dcProxyChainMap.forEach((dc, proxyChainMap) -> {
             proxyChainMap.forEach((clusterShard, proxyChain) -> {
                 DefaultTunnelInfo tunnel = proxyChain.getTunnelInfos().get(0);
-                if (tempShardProxyChain.containsKey(clusterShard)) {
-                    tempShardProxyChain.get(clusterShard).getTunnelInfos().add(tunnel);
-                } else {
-                    tempShardProxyChain.put(clusterShard, proxyChain);
+                if (!tempShardProxyChain.containsKey(clusterShard)) {
+                    tempShardProxyChain.put(clusterShard, new DefaultProxyChain(proxyChain.getBackupDcId(),
+                            proxyChain.getClusterId(), proxyChain.getShardId(), proxyChain.getPeerDcId(), new ArrayList<>()));
                 }
-
+                tempShardProxyChain.get(clusterShard).getTunnelInfos().add(tunnel);
                 tempTunnelClusterShardMap.put(tunnel.getTunnelId(), clusterShard);
             });
         });
         synchronized (DefaultProxyChainCollector.this) {
-            tunnelClusterShardMap = tempTunnelClusterShardMap;
-            shardProxyChainMap = tempShardProxyChain;
+            if (taskTrigger.get()) {
+                tunnelClusterShardMap = tempTunnelClusterShardMap;
+                shardProxyChainMap = tempShardProxyChain;
+            } else {
+                clear();
+            }
         }
     }
 
     @VisibleForTesting
-    DefaultProxyChainCollector setDcProxyChainMap(Map<String, Map<DcClusterShardPeer, ProxyChain>> dcProxyChainMap) {
-        this.dcProxyChainMap = dcProxyChainMap;
+    protected void setTaskTrigger(boolean trigger) {
+        this.taskTrigger.set(trigger);
+    }
+
+    @VisibleForTesting
+    DefaultProxyChainCollector setHttpService(DefaultHttpService httpService) {
+        this.httpService = httpService;
         return this;
     }
 
@@ -178,20 +196,7 @@ public class DefaultProxyChainCollector extends AbstractStartStoppable implement
         return shardProxyChainMap;
     }
 
-    protected int getStartTime() {
-        return 2 * 1000;
-    }
-
-    protected int getPeriodic() {
-        return 1000;
-    }
-
-    @Override
-    protected void doStop() throws Exception {
-        if(future != null) {
-            future.cancel(true);
-            future = null;
-        }
+    protected void clear() {
         shardProxyChainMap.clear();
         tunnelClusterShardMap.clear();
         dcProxyChainMap.clear();

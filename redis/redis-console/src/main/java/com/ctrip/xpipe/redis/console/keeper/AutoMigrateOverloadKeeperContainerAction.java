@@ -39,13 +39,13 @@ public class AutoMigrateOverloadKeeperContainerAction extends AbstractCrossDcInt
 
     private final List<ALERT_TYPE> alertType = Lists.newArrayList(ALERT_TYPE.KEEPER_MIGRATION_FAIL, ALERT_TYPE.KEEPER_MIGRATION_SUCCESS);
 
-    private final static String KEEPER_MIGRATION_SUCCESS = "keeper_migration_success";
+    public final static String KEEPER_MIGRATION_SUCCESS = "keeper_migration_success";
 
-    private final static String KEEPER_MIGRATION_FAIL = "keeper_migration_fail";
+    public final static String KEEPER_MIGRATION_FAIL = "keeper_migration_fail";
 
     @Override
     protected void doAction() {
-        List<MigrationKeeperContainerDetailModel> readyToMigrationKeeperContainers = analyzer.getAllDcReadyToMigrationKeeperContainers();
+        List<MigrationKeeperContainerDetailModel> readyToMigrationKeeperContainers = analyzer.getCurrentDcReadyToMigrationKeeperContainers();
         if (CollectionUtils.isEmpty(readyToMigrationKeeperContainers)) return;
 
         migrateAllKeepers(readyToMigrationKeeperContainers);
@@ -80,7 +80,7 @@ public class AutoMigrateOverloadKeeperContainerAction extends AbstractCrossDcInt
 
                 alertForKeeperMigrationSuccess(migrateShard, srcKeeperContainerIp,
                         migrationKeeperContainerDetailModel.getTargetKeeperContainer().getKeeperIp());
-                migrationKeeperContainerDetailModel.migrateKeeperCountIncrease();
+                migrationKeeperContainerDetailModel.migrateKeeperCompleteCountIncrease();
                 iterator.remove();
             }
         }

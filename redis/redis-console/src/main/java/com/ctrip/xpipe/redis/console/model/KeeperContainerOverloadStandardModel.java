@@ -1,10 +1,20 @@
 package com.ctrip.xpipe.redis.console.model;
 
+import java.util.List;
+
 public class KeeperContainerOverloadStandardModel {
 
     private long peerDataOverload;
 
     private long flowOverload;
+
+    public KeeperContainerOverloadStandardModel(long peerDataOverload, long flowOverload) {
+        this.peerDataOverload = peerDataOverload;
+        this.flowOverload = flowOverload;
+    }
+
+    public KeeperContainerOverloadStandardModel() {
+    }
 
     public long getPeerDataOverload() {
         return peerDataOverload;
@@ -31,4 +41,5 @@ public class KeeperContainerOverloadStandardModel {
                 ", flowOverload=" + flowOverload +
                 '}';
     }
+
 }
