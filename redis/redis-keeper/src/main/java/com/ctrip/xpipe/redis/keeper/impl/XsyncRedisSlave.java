@@ -1,8 +1,6 @@
 package com.ctrip.xpipe.redis.keeper.impl;
 
 import com.ctrip.xpipe.redis.core.protocal.cmd.DefaultXsync;
-import com.ctrip.xpipe.redis.core.redis.operation.RedisOp;
-import com.ctrip.xpipe.redis.core.redis.operation.RedisOpType;
 import com.ctrip.xpipe.redis.core.store.GtidSetReplicationProgress;
 import com.ctrip.xpipe.redis.core.store.ReplicationProgress;
 import com.ctrip.xpipe.redis.keeper.RedisClient;
@@ -25,29 +23,12 @@ public class XsyncRedisSlave extends DefaultRedisSlave {
     }
 
     protected String buildMarkBeforeFsync(ReplicationProgress<?> rdbProgress) {
-        return StringUtil.join(" ", DefaultXsync.FULL_SYNC, rdbProgress.getProgress().toString());
+        return StringUtil.join(" ", DefaultXsync.FULL_SYNC, rdbProgress.getProgressMark());
     }
 
     protected String buildThreadPrefix(Channel channel) {
         String getRemoteIpLocalPort = ChannelUtil.getRemoteAddr(channel);
         return  "RedisClientXsync-" + getRemoteIpLocalPort;
-    }
-
-    @Override
-    protected boolean shouldFilter(RedisOp redisOp) {
-        if (RedisOpType.PUBLISH.equals(redisOp.getOpType())) {
-            int length = redisOp.buildRawOpArgs().length;
-            if (length < 5) {
-                logger.warn("publish command length={} < 5, filtered", length);
-                return true;
-            }
-            String channel = new String(redisOp.buildRawOpArgs()[4]);
-            if (!channel.startsWith("xpipe-asymmetric-")) {
-                logger.debug("publish channel: [{}] filtered", channel);
-                return true;
-            }
-        }
-        return false;
     }
 
     @Override

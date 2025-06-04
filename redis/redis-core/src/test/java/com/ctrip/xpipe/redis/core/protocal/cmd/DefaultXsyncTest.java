@@ -2,7 +2,7 @@ package com.ctrip.xpipe.redis.core.protocal.cmd;
 
 import com.ctrip.xpipe.endpoint.DefaultEndPoint;
 import com.ctrip.xpipe.gtid.GtidSet;
-import com.ctrip.xpipe.redis.core.protocal.XsyncObserver;
+import com.ctrip.xpipe.redis.core.protocal.SyncObserver;
 import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
 import com.ctrip.xpipe.redis.core.redis.operation.RedisOp;
 import com.ctrip.xpipe.redis.core.redis.parser.AbstractRedisOpParserTest;
@@ -19,15 +19,13 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 
 /**
  * @author lishanglin
  * date 2022/2/23
  */
-public class DefaultXsyncTest extends AbstractRedisOpParserTest implements XsyncObserver {
+public class DefaultXsyncTest extends AbstractRedisOpParserTest implements SyncObserver {
 
     private DefaultXsync xsync;
 
@@ -41,9 +39,9 @@ public class DefaultXsyncTest extends AbstractRedisOpParserTest implements Xsync
     public void setupDefaultXsyncTest() throws Exception {
         server = startFakeXsyncServer(randomPort(), null);
         xsync = new DefaultXsync(getXpipeNettyClientKeyedObjectPool().getKeyPool(new DefaultEndPoint("127.0.0.1", server.getPort())),
-                gtidSet, null, scheduled);
+                gtidSet, null, scheduled, 0);
         redisOps = new ArrayList<>();
-        xsync.addXsyncObserver(this);
+        xsync.addSyncObserver(this);
     }
 
     @Test
@@ -96,12 +94,12 @@ public class DefaultXsyncTest extends AbstractRedisOpParserTest implements Xsync
     }
 
     @Override
-    public void onFullSync(GtidSet rdbGtidSet) {
+    public void onFullSync(GtidSet rdbGtidSet, long rdbOffset) {
 
     }
 
     @Override
-    public void beginReadRdb(EofType eofType, GtidSet rdbGtidSet) {
+    public void beginReadRdb(EofType eofType, GtidSet rdbGtidSet, long rdbOffset) {
 
     }
 
@@ -111,17 +109,17 @@ public class DefaultXsyncTest extends AbstractRedisOpParserTest implements Xsync
     }
 
     @Override
-    public void endReadRdb(EofType eofType, GtidSet rdbGtidSet) {
+    public void endReadRdb(EofType eofType, GtidSet rdbGtidSet, long rdbOffset) {
 
     }
 
     @Override
-    public void onContinue(GtidSet gtidSet) {
+    public void onContinue(GtidSet gtidSet, long continueOffset) {
 
     }
 
     @Override
-    public void onCommand(Object[] rawCmdArgs) {
+    public void onCommand(long commandOffset, Object[] rawCmdArgs) {
         RedisOp redisOp = parser.parse(rawCmdArgs);
         redisOps.add(redisOp);
     }

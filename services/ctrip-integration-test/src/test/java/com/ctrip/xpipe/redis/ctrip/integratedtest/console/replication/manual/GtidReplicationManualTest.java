@@ -8,7 +8,7 @@ import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
 import com.ctrip.xpipe.redis.core.entity.RedisMeta;
 import com.ctrip.xpipe.redis.core.meta.KeeperState;
 import com.ctrip.xpipe.redis.core.protocal.MASTER_STATE;
-import com.ctrip.xpipe.redis.core.protocal.XsyncObserver;
+import com.ctrip.xpipe.redis.core.protocal.SyncObserver;
 import com.ctrip.xpipe.redis.core.protocal.cmd.DefaultXsync;
 import com.ctrip.xpipe.redis.core.protocal.protocal.EofType;
 import com.ctrip.xpipe.redis.core.redis.operation.RedisOp;
@@ -28,6 +28,7 @@ import org.junit.Test;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author lishanglin
@@ -36,7 +37,7 @@ import java.util.List;
  * 2、mkdir -p /opt/config/100004374/credis
  * 3、echo 'group.master=127.0.0.1:6380' > /opt/config/100004374/credis/ApplierTest.properties
  */
-public class GtidReplicationManualTest extends AbstractKeeperIntegrated implements XsyncObserver, RdbParseListener {
+public class GtidReplicationManualTest extends AbstractKeeperIntegrated implements SyncObserver, RdbParseListener {
 
     private RedisKeeperServer gtidKeeperServer;
 
@@ -77,7 +78,7 @@ public class GtidReplicationManualTest extends AbstractKeeperIntegrated implemen
         waitConditionUntilTimeOut(() -> MASTER_STATE.REDIS_REPL_CONNECTED.equals(gtidKeeperServer.getRedisMaster().getMasterState()));
 
         DefaultXsync xsync = new DefaultXsync(keeperMeta.getIp(), keeperMeta.getPort(), new GtidSet(reqUuid + ":0"), null, scheduled);
-        xsync.addXsyncObserver(this);
+        xsync.addSyncObserver(this);
         xsync.execute(executors);
 
         ApplierMeta applierMeta = new ApplierMeta();
@@ -89,24 +90,24 @@ public class GtidReplicationManualTest extends AbstractKeeperIntegrated implemen
         applierServer.initialize();
         applierServer.start();
 
-        applierServer.setStateActive(new DefaultEndPoint(keeperMeta.getIp(), keeperMeta.getPort()), new GtidSet(reqUuid + ":0"));
+        applierServer.setStateActive(new DefaultEndPoint(keeperMeta.getIp(), keeperMeta.getPort()), new GtidSet(reqUuid + ":0"), true);
 
         waitForAnyKeyToExit();
     }
 
     @Override
-    public void onCommand(Object[] rawCmdArgs) {
+    public void onCommand(long commandOffset, Object[] rawCmdArgs) {
         RedisOp redisOp = redisOpParser.parse(rawCmdArgs);
         logger.info("[onCommand] {}", redisOp);
     }
 
     @Override
-    public void onFullSync(GtidSet rdbGtidSet) {
+    public void onFullSync(GtidSet rdbGtidSet, long rdbOffset) {
         logger.info("[onFullSync] {}", rdbGtidSet);
     }
 
     @Override
-    public void beginReadRdb(EofType eofType, GtidSet rdbGtidSet) {
+    public void beginReadRdb(EofType eofType, GtidSet rdbGtidSet, long rdbOffset) {
         logger.info("[beginReadRdb] {} {}", eofType, rdbGtidSet);
     }
 
@@ -117,12 +118,12 @@ public class GtidReplicationManualTest extends AbstractKeeperIntegrated implemen
     }
 
     @Override
-    public void endReadRdb(EofType eofType, GtidSet rdbGtidSet) {
+    public void endReadRdb(EofType eofType, GtidSet rdbGtidSet, long rdbOffset) {
         logger.info("[endReadRdb] {} {}", eofType, rdbGtidSet);
     }
 
     @Override
-    public void onContinue(GtidSet gtidSet) {
+    public void onContinue(GtidSet gtidSet, long continueOffset) {
         logger.info("[onContinue]");
     }
 
@@ -139,5 +140,10 @@ public class GtidReplicationManualTest extends AbstractKeeperIntegrated implemen
     @Override
     public void onFinish(RdbParser<?> parser) {
         logger.info("[onFinish] {}", parser);
+    }
+
+    @Override
+    public void onAuxFinish(Map<String, String> auxMap) {
+        logger.info("[onAuxFinish]");
     }
 }

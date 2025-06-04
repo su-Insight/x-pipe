@@ -12,6 +12,7 @@ import io.netty.buffer.PooledByteBufAllocator;
 import org.slf4j.Logger;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -176,6 +177,17 @@ public abstract class AbstractRdbParser<T> implements RdbParser<T> {
         }
     }
 
+    protected void notifyAuxEnd(Map<String, String> axuMap) {
+        getLogger().debug("[notifyAuxEnd]");
+        for (RdbParseListener listener : listeners) {
+            try {
+                listener.onAuxFinish(axuMap);
+            } catch (Throwable t){
+                getLogger().info("[notifyAuxEnd][fail][{}]", listener, t);
+            }
+        }
+    }
+
     protected void notifyFinish() {
         if (!needFinishNotify) return;
 
@@ -217,9 +229,11 @@ public abstract class AbstractRdbParser<T> implements RdbParser<T> {
     public void reset() {
         if (lenTemp != null) {
             lenTemp.release();
+            lenTemp = null;
         }
         if (millSecondTemp != null){
             millSecondTemp.release();
+            millSecondTemp = null;
         }
         this.lenReadState = LEN_READ_STATE.READ_INIT;
     }

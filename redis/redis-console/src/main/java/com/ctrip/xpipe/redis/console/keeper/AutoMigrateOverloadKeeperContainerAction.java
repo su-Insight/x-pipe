@@ -39,13 +39,30 @@ public class AutoMigrateOverloadKeeperContainerAction extends AbstractCrossDcInt
 
     private final List<ALERT_TYPE> alertType = Lists.newArrayList(ALERT_TYPE.KEEPER_MIGRATION_FAIL, ALERT_TYPE.KEEPER_MIGRATION_SUCCESS);
 
-    private final static String KEEPER_MIGRATION_SUCCESS = "keeper_migration_success";
+    public final static String KEEPER_MIGRATION = "keeper_migration";
 
-    private final static String KEEPER_MIGRATION_FAIL = "keeper_migration_fail";
+    public final static String KEEPER_MIGRATION_SUCCESS = "keeper_migration_success";
+
+    public final static String KEEPER_MIGRATION_FAIL = "keeper_migration_fail";
+
+    public final static String KEEPER_SWITCH_MASTER_SUCCESS = "keeper_switch_master_success";
+
+    public final static String KEEPER_SWITCH_MASTER_FAIL = "keeper_switch_master_fail";
+
+    public final static String KEEPER_MIGRATION_ACTIVE_SUCCESS = "keeper_migration_active_success";
+
+    public final static String KEEPER_MIGRATION_ACTIVE_FAIL = "keeper_migration_active_fail";
+
+    public final static String KEEPER_MIGRATION_ACTIVE_ROLLBACK_ERROR = "keeper_migration_active_rollback_error";
+
+    public final static String KEEPER_MIGRATION_BACKUP_SUCCESS = "keeper_migration_backup_success";
+
+    public final static String KEEPER_MIGRATION_BACKUP_FAIL = "keeper_migration_backup_fail";
+
 
     @Override
     protected void doAction() {
-        List<MigrationKeeperContainerDetailModel> readyToMigrationKeeperContainers = analyzer.getAllDcReadyToMigrationKeeperContainers();
+        List<MigrationKeeperContainerDetailModel> readyToMigrationKeeperContainers = analyzer.getCurrentDcReadyToMigrationKeeperContainers();
         if (CollectionUtils.isEmpty(readyToMigrationKeeperContainers)) return;
 
         migrateAllKeepers(readyToMigrationKeeperContainers);
@@ -70,7 +87,7 @@ public class AutoMigrateOverloadKeeperContainerAction extends AbstractCrossDcInt
                 ShardModel shardModel = shardModelService.getShardModel(migrateShard.getDcId(),
                         migrateShard.getClusterId(), migrateShard.getShardId(), false, null);
 
-                if (!shardModelService.migrateShardKeepers(migrateShard.getDcId(), migrateShard.getClusterId(), shardModel,
+                if (!shardModelService.migrateBackupKeeper(migrateShard.getDcId(), migrateShard.getClusterId(), shardModel,
                         migrationKeeperContainerDetailModel.getTargetKeeperContainer().getKeeperIp(), srcKeeperContainerIp)) {
                     logger.warn("[migrateAllKeepers] migrate shard keepers failed, shard: {}", migrateShard);
                     alertForKeeperMigrationFail(migrateShard, srcKeeperContainerIp,
@@ -80,7 +97,7 @@ public class AutoMigrateOverloadKeeperContainerAction extends AbstractCrossDcInt
 
                 alertForKeeperMigrationSuccess(migrateShard, srcKeeperContainerIp,
                         migrationKeeperContainerDetailModel.getTargetKeeperContainer().getKeeperIp());
-                migrationKeeperContainerDetailModel.migrateKeeperCountIncrease();
+                migrationKeeperContainerDetailModel.migrateKeeperCompleteCountIncrease();
                 iterator.remove();
             }
         }

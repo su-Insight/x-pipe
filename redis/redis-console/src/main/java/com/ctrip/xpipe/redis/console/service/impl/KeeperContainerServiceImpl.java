@@ -2,12 +2,16 @@ package com.ctrip.xpipe.redis.console.service.impl;
 
 import com.ctrip.xpipe.endpoint.HostPort;
 import com.ctrip.xpipe.exception.XpipeRuntimeException;
+import com.ctrip.xpipe.redis.checker.model.KeeperContainerUsedInfoModel;
 import com.ctrip.xpipe.redis.console.constant.XPipeConsoleConstant;
 import com.ctrip.xpipe.redis.console.controller.api.data.meta.KeeperContainerCreateInfo;
 import com.ctrip.xpipe.redis.console.exception.BadRequestException;
+import com.ctrip.xpipe.redis.console.keeper.entity.KeeperContainerDiskType;
 import com.ctrip.xpipe.redis.console.model.*;
 import com.ctrip.xpipe.redis.console.query.DalQuery;
 import com.ctrip.xpipe.redis.console.service.*;
+import com.ctrip.xpipe.redis.core.entity.KeeperInstanceMeta;
+import com.ctrip.xpipe.redis.core.entity.KeeperTransMeta;
 import com.ctrip.xpipe.spring.RestTemplateFactory;
 import com.ctrip.xpipe.utils.StringUtil;
 import com.ctrip.xpipe.utils.VisibleForTesting;
@@ -15,6 +19,11 @@ import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestOperations;
@@ -251,7 +260,8 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
             .setKeepercontainerIp(createInfo.getKeepercontainerIp())
             .setKeepercontainerPort(createInfo.getKeepercontainerPort())
             .setKeepercontainerOrgId(org.getId())
-            .setKeepercontainerActive(createInfo.isActive());
+            .setKeepercontainerActive(createInfo.isActive())
+            .setKeepercontainerDiskType(createInfo.getDiskType() == null ? KeeperContainerDiskType.DEFAULT.getDesc() : createInfo.getDiskType().toUpperCase());
 
     queryHandler.handleInsert(new DalQuery<Integer>() {
       @Override
@@ -275,7 +285,8 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
         KeeperContainerCreateInfo info = new KeeperContainerCreateInfo()
                 .setDcName(dc).setActive(input.isKeepercontainerActive())
                 .setKeepercontainerIp(input.getKeepercontainerIp())
-                .setKeepercontainerPort(input.getKeepercontainerPort());
+                .setKeepercontainerPort(input.getKeepercontainerPort())
+                .setDiskType(input.getKeepercontainerDiskType());
         if (org != null) {
           info.setKeepercontainerOrgId(org.getOrgId()).setOrgName(org.getOrgName());
         } else {
@@ -295,7 +306,8 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
   }
 
   @Override
-  public void updateKeeperContainer(KeeperContainerCreateInfo createInfo) {
+  public void
+  updateKeeperContainer(KeeperContainerCreateInfo createInfo) {
     KeepercontainerTbl keepercontainerTbl = findByIpPort(createInfo.getKeepercontainerIp(), createInfo.getKeepercontainerPort());
     if(keepercontainerTbl == null) {
       throw new IllegalArgumentException(String.format("%s:%d keeper container not found",
@@ -317,6 +329,8 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
     }
 
     keepercontainerTbl.setKeepercontainerActive(createInfo.isActive());
+
+    keepercontainerTbl.setKeepercontainerDiskType(createInfo.getDiskType());
     queryHandler.handleUpdate(new DalQuery<Integer>() {
       @Override
       public Integer doQuery() throws DalException {
@@ -410,16 +424,20 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
       proto.setKeepercontainerOrgId(org.getId());
     }
 
-    if (keeperContainerInfoModel.getAzName() != null) {
+    if (!StringUtil.isEmpty(keeperContainerInfoModel.getAzName())) {
       AzTbl azTbl = azService.getAvailableZoneTblByAzName(keeperContainerInfoModel.getAzName());
       if(azTbl == null) {
         throw new IllegalArgumentException(String.format("available zone %s does not exist",
                                                                                 keeperContainerInfoModel.getAzName()));
       }
       proto.setAzId(azTbl.getId());
+    } else {
+      proto.setAzId(0L);
     }
 
     proto.setKeepercontainerActive(keeperContainerInfoModel.isActive());
+
+    proto.setKeepercontainerDiskType(keeperContainerInfoModel.getDiskType());
 
     queryHandler.handleQuery(new DalQuery<Integer>() {
       @Override
@@ -427,6 +445,25 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
         return dao.updateByPK(proto, KeepercontainerTblEntity.UPDATESET_FULL);
       }
     });
+  }
+
+  @Override
+  public List<KeeperInstanceMeta> getAllKeepers(String keeperContainerIp) {
+    getOrCreateRestTemplate();
+    return restTemplate.exchange(String.format("http://%s:8080/keepers", keeperContainerIp), HttpMethod.GET, null,
+            new ParameterizedTypeReference<List<KeeperInstanceMeta>>() {}).getBody();
+  }
+
+  @Override
+  public void resetKeeper(String activeKeeperIp, Long replId) {
+    KeeperTransMeta keeperInstanceMeta = new KeeperTransMeta();
+    keeperInstanceMeta.setReplId(replId);
+    getOrCreateRestTemplate();
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    HttpEntity<KeeperTransMeta> requestEntity = new HttpEntity<>(keeperInstanceMeta, headers);
+    restTemplate.exchange(String.format("http://%s:8080/keepers/election/reset", activeKeeperIp),
+            HttpMethod.POST, requestEntity, Void.class);
   }
 
   @Override
@@ -466,6 +503,7 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
       model.setAddr(new HostPort(baseInfo.getKeepercontainerIp(), baseInfo.getKeepercontainerPort()));
       model.setDcName(baseInfo.getDcInfo().getDcName());
       model.setOrgName(baseInfo.getOrgInfo().getOrgName());
+      model.setDiskType(baseInfo.getKeepercontainerDiskType());
 
       if (baseInfo.getAzId() != 0) {
         AzTbl aztbl = azService.getAvailableZoneTblById(baseInfo.getAzId());
@@ -502,6 +540,7 @@ public class KeeperContainerServiceImpl extends AbstractConsoleService<Keepercon
     keeperContainerInfoModel.setDcName(dcNameMap.get(keepercontainerTbl.getKeepercontainerDc()));
     keeperContainerInfoModel.setAzName(azNameMap.get(keepercontainerTbl.getAzId()));
     keeperContainerInfoModel.setAddr(new HostPort(keepercontainerTbl.getKeepercontainerIp(), keepercontainerTbl.getKeepercontainerPort()));
+    keeperContainerInfoModel.setDiskType(keepercontainerTbl.getKeepercontainerDiskType());
 
     OrganizationTbl organizationTbl = organizationService.getOrganization(keepercontainerTbl.getKeepercontainerOrgId());
     if (organizationTbl != null) {

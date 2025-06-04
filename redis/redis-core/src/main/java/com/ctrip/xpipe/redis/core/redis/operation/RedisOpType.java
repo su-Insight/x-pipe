@@ -1,5 +1,10 @@
 package com.ctrip.xpipe.redis.core.redis.operation;
 
+import com.ctrip.xpipe.redis.core.redis.operation.transfer.RedisOpCrdtDelTransfer;
+import com.ctrip.xpipe.redis.core.redis.operation.transfer.RedisOpCrdtMSetTransfer;
+import com.ctrip.xpipe.redis.core.redis.operation.transfer.RedisOpCrdtSelectTransfer;
+import com.ctrip.xpipe.redis.core.redis.operation.transfer.RedisOpCrdtSetTransfer;
+import com.ctrip.xpipe.tuple.Pair;
 import com.ctrip.xpipe.utils.StringUtil;
 
 /**
@@ -82,6 +87,11 @@ public enum RedisOpType {
     MSET(true, -3),
     MSETNX(true, -3),
 
+    // ctrip
+    GTID_LWM(false, 3, false),
+    CTRIP_MERGE_START(false, -1, true),
+    CTRIP_MERGE_END(false, -2, true),
+
     // other
     SELECT(false, 2),
     PUBLISH(false, 3),
@@ -93,7 +103,15 @@ public enum RedisOpType {
     EXEC(false, 1),
     SCRIPT(false, -2),
     MOVE(false, 3),
-    UNKNOWN(false, -1);
+    UNKNOWN(false, -1, true),
+
+    //crdt
+    CRDT_SET(false, 3, RedisOpCrdtSetTransfer.getInstance()),
+    CRDT_MSET(true, 3, RedisOpCrdtMSetTransfer.getInstance()),
+    CRDT_DEL_REG(false, 3, RedisOpCrdtDelTransfer.getInstance()),
+    CRDT_SELECT(false, 2, RedisOpCrdtSelectTransfer.getInstance()),
+    CRDT_OVC(false, 2, true),
+    CRDT_PUBLISH(false, 3, true);
 
     // Support multi key or not
     private boolean supportMultiKey;
@@ -101,9 +119,27 @@ public enum RedisOpType {
     // Number of arguments, it is possible to use -N to say >= N
     private int arity;
 
+    private boolean swallow;
+
+    private RedisOpCrdtTransfer transfer;
+
     RedisOpType(boolean multiKey, int arity) {
+        this(multiKey, arity, false);
+    }
+
+    RedisOpType(boolean multiKey, int arity, boolean swallow) {
+        this(multiKey, arity, swallow, null);
+    }
+
+    RedisOpType(boolean multiKey, int arity, RedisOpCrdtTransfer transfer) {
+        this(multiKey, arity, false, transfer);
+    }
+
+    RedisOpType(boolean multiKey, int arity, boolean swallow, RedisOpCrdtTransfer transfer) {
         this.supportMultiKey = multiKey;
         this.arity = arity;
+        this.swallow = swallow;
+        this.transfer = transfer;
     }
 
     public boolean supportMultiKey() {
@@ -114,6 +150,17 @@ public enum RedisOpType {
         return arity;
     }
 
+    public boolean isSwallow() {
+        return swallow;
+    }
+
+    public Pair<RedisOpType, byte[][]> transfer(RedisOpType redisOpType, byte[][] args) {
+        if (null == transfer) {
+            return Pair.of(redisOpType, args);
+        }
+        return this.transfer.transformCrdtRedisOp(redisOpType, args);
+    }
+
     public boolean checkArgcNotStrictly(Object[] args) {
         return args.length >= Math.abs(arity);
     }
@@ -122,10 +169,9 @@ public enum RedisOpType {
         if (StringUtil.isEmpty(name)) return UNKNOWN;
 
         try {
-            return valueOf(name.toUpperCase());
+            return valueOf(name.replace('.', '_').toUpperCase());
         } catch (IllegalArgumentException illegalArgumentException) {
             return UNKNOWN;
         }
     }
-
 }

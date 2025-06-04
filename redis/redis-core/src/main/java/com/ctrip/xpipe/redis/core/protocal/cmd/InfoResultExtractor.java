@@ -26,6 +26,9 @@ public class InfoResultExtractor {
     private static final String KEY_SWAP_USED_DB_SIZE = "swap_used_db_size";
     private static final String KEY_USED_MEMORY ="used_memory";
     private static final String KEY_MAX_MEMORY ="maxmemory";
+    private static final String KEY_KEEPER_ACTIVE = "state";
+
+    private static final String KEY_SWAP_VERSION = "swap_version";
 
     protected static Logger logger = LoggerFactory.getLogger(InfoResultExtractor.class);
 
@@ -34,6 +37,11 @@ public class InfoResultExtractor {
 
     public InfoResultExtractor(String result) {
         this.result = result;
+    }
+
+    public boolean contain(String key) {
+        genKeyValues();
+        return keyValues.containsKey(key);
     }
 
     public String extract(String key) {
@@ -99,6 +107,10 @@ public class InfoResultExtractor {
         }
     }
 
+    public boolean isROR() {
+        return contain(KEY_SWAP_VERSION);
+    }
+
     public long getSyncFull() {
         return extractAsLong(KEY_SYNC_FULL);
     }
@@ -111,13 +123,15 @@ public class InfoResultExtractor {
         return extractAsLong(KEY_SYNC_PARTIAL_ERR);
     }
 
-    public float getKeeperInstantaneousInputKbps() { return extractAsFloat(KEY_INSTANTANEOUS_INPUT_KBPS);}
+    public Float getKeeperInstantaneousInputKbps() { return extractAsFloat(KEY_INSTANTANEOUS_INPUT_KBPS);}
 
     public long getUsedMemory() { return extractAsLong(KEY_USED_MEMORY);}
 
     public long getMaxMemory() { return extractAsLong(KEY_MAX_MEMORY);}
 
     public Long getSwapUsedDbSize() { return extractAsLong(KEY_SWAP_USED_DB_SIZE);}
+
+    public boolean isKeeperActive() { return "ACTIVE".equals(extract(KEY_KEEPER_ACTIVE)); }
 
     public long getMasterReplOffset() {
         Long result = extractAsLong(KEY_MASTER_REPL_OFFSET);

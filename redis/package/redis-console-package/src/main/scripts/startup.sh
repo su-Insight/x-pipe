@@ -60,7 +60,10 @@ function changeAndMakeLogDir(){
     makedir $logdir
     #../xx.conf
     sed -i 's#LOG_FOLDER=\(.*\)#LOG_FOLDER='"$logdir"'#'  $current/../*.conf
+
+    # <property name="baseDir" value="/opt/logs/100004374" />
     sed -i 's#name="baseDir">.*</Property>#name="baseDir">'$logdir'</Property>#'   $current/../config/log4j2.xml
+    sed -i 's|<property name="baseDir" value="/opt/logs/[^"]*" />|<property name="baseDir" value="'$logdir'" />|'   $current/../config/arthas-logback.xml
 }
 function changePort(){
     conf=$1
@@ -97,12 +100,19 @@ function tryRemoveHeapTrace() {
     find "$logdir" -type f -name "heap_trace_$suffix*.txt" -delete
 }
 
+function tryRemoveJarLog() {
+    logdir=$1
+    appname=$2
+    find "$logdir" -type f -name "$appname_*.log" -delete
+}
+
 #VARS
 FULL_DIR=`getCurrentRealPath`
 SERVICE_NAME=redis-console
 LOG_DIR=/opt/logs/100004374
 `trySaveHeapTrace ${LOG_DIR}`
 `tryRemoveHeapTrace ${LOG_DIR}`
+`tryRemoveJarLog ${LOG_DIR} ${SERVICE_NAME}`
 SERVER_PORT=`getPortFromPathOrDefault $FULL_DIR 8080`
 JMX_PORT=` expr $SERVER_PORT + 10000 `
 IP=`ifconfig | grep "inet.10" | awk '{print $2}; NR == 1 {exit}'`

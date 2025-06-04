@@ -48,14 +48,14 @@ public class ApplierServerTest extends AbstractRedisKeeperTest {
         meta.setApplierContainerId(1L);
         meta.setId("local-test-applier");
         meta.setIp("127.0.0.1");
-        meta.setPort(5000);
+        meta.setPort(8000);
         DefaultApplierServer applier = new DefaultApplierServer("ApplierTest", ClusterId.from(1L), ShardId.from(1L), meta, leaderElectorManager, cmdParser, getKeeperConfig());
         applier.initialize();
         applier.start();
 
         //applier.setStateBackup();
 
-        applier.setStateActive(new DefaultEndPoint("127.0.0.1", 6000), new GtidSet("29097dd95625bc57c42bb0d8c887ec7bc847c05a:0"));
+        applier.setStateActive(new DefaultEndPoint("127.0.0.1", 6000), new GtidSet("29097dd95625bc57c42bb0d8c887ec7bc847c05a:0"),true);
 
         //applier.setStateBackup();
 

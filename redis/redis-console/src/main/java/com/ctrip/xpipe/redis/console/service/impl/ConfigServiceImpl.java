@@ -1,6 +1,5 @@
 package com.ctrip.xpipe.redis.console.service.impl;
 
-import com.ctrip.framework.foundation.Foundation;
 import com.ctrip.xpipe.api.foundation.FoundationService;
 import com.ctrip.xpipe.api.monitor.EventMonitor;
 import com.ctrip.xpipe.redis.console.config.ConsoleConfig;
@@ -22,10 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.unidal.dal.jdbc.DalException;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 
 
 /**
@@ -57,6 +53,19 @@ public class ConfigServiceImpl implements ConfigService {
     @Autowired
     public ConfigServiceImpl(ConsoleConfig consoleConfig) {
         this.crossDcLeaderLeaseName = consoleConfig.getCrossDcLeaderLeaseName();
+    }
+
+    @Override
+    public void setKeyKeeperContainerStandard(ConfigModel config) throws Exception {
+        if (!KEY_KEEPER_CONTAINER_STANDARD.equals(config.getKey())) {
+            throw new RuntimeException(String.format("key should be %s !", KEY_KEEPER_CONTAINER_STANDARD));
+        }
+        try {
+            Long.parseLong(config.getVal());
+        } catch (NumberFormatException e) {
+            throw new RuntimeException(String.format("value %s should be number ", config.getVal()));
+        }
+        configDao.setConfig(config);
     }
 
     @Override
@@ -312,6 +321,19 @@ public class ConfigServiceImpl implements ConfigService {
         try {
             ConfigTbl configTbl = configDao.getByKeyAndSubId(key, subId);
             return new ConfigModel(configTbl);
+        } catch (DalException e) {
+            logger.error("[getConfig]", e);
+            return null;
+        }
+    }
+
+    @Override
+    public List<ConfigModel> getConfigs(String key) {
+        try {
+            List<ConfigTbl> configTbl = configDao.getAllByKey(key);
+            List<ConfigModel> configModels = new ArrayList<>();
+            configTbl.forEach(config -> configModels.add(new ConfigModel(config)));
+            return configModels;
         } catch (DalException e) {
             logger.error("[getConfig]", e);
             return null;

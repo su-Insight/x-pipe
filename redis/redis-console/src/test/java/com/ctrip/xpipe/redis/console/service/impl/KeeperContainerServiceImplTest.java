@@ -8,17 +8,28 @@ import com.ctrip.xpipe.redis.console.exception.BadRequestException;
 import com.ctrip.xpipe.redis.console.model.ClusterTbl;
 import com.ctrip.xpipe.redis.console.model.KeeperContainerInfoModel;
 import com.ctrip.xpipe.redis.console.model.KeepercontainerTbl;
+import com.ctrip.xpipe.redis.core.entity.KeeperInstanceMeta;
+import com.ctrip.xpipe.redis.core.entity.KeeperMeta;
+import com.ctrip.xpipe.redis.core.entity.KeeperTransMeta;
 import com.ctrip.xpipe.spring.RestTemplateFactory;
 import com.ctrip.xpipe.utils.StringUtil;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.*;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
+
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 
 
 /**
@@ -235,6 +246,7 @@ public class KeeperContainerServiceImplTest extends AbstractServiceImplTest{
         if(sample != null) {
             logger.info("[sample] {}", sample);
             sample.setKeepercontainerOrgId(0L);
+            sample.setDiskType("DEFAULT");
             keeperContainerService.updateKeeperContainer(sample);
             KeepercontainerTbl ktl = keeperContainerService.findByIpPort(sample.getKeepercontainerIp(),
                     sample.getKeepercontainerPort());
@@ -269,10 +281,11 @@ public class KeeperContainerServiceImplTest extends AbstractServiceImplTest{
         Assert.assertEquals(null, keeper.getOrgName());
         Assert.assertEquals("A", keeper.getAzName());
 
-        keeper.setAzName("B");
+        keeper.setAzName(null);
         keeper.setOrgName("org-1");
         keeper.setActive(false);
         keeper.setDcName("jq");
+        keeper.setDiskType("AWS_1T");
 
         keeperContainerService.updateKeeperContainerByInfoModel(keeper);
 
@@ -282,8 +295,37 @@ public class KeeperContainerServiceImplTest extends AbstractServiceImplTest{
         Assert.assertEquals(7033, keeper1.getAddr().getPort());
         Assert.assertEquals(false, keeper1.isActive());
         Assert.assertEquals("org-1", keeper1.getOrgName());
-        Assert.assertEquals("B", keeper1.getAzName());
+        Assert.assertEquals(null, keeper1.getAzName());
+        Assert.assertEquals("AWS_1T", keeper1.getDiskType());
 
+    }
+
+    @Test
+    public void getAllKeepersTest() {
+        RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+        keeperContainerService.setRestTemplate(restTemplate);
+        ResponseEntity<List<KeeperInstanceMeta>> response = Mockito.mock(ResponseEntity.class);
+        List<KeeperInstanceMeta> list = new ArrayList<>();
+        Mockito.when(response.getBody()).thenReturn(list);
+        Mockito.when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), Mockito.isNull(), Mockito.any(ParameterizedTypeReference.class))).thenReturn(response);
+        List<KeeperInstanceMeta> allKeepers = keeperContainerService.getAllKeepers("keeperContainerIp");
+        Assert.assertEquals(list, allKeepers);
+    }
+
+    @Test
+    public void resetKeepersTest() {
+        KeeperTransMeta keeperInstanceMeta = new KeeperInstanceMeta();
+        KeeperMeta meta = new KeeperMeta();
+        meta.setIp("");
+        keeperInstanceMeta.setKeeperMeta(meta);
+        RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+        keeperContainerService.setRestTemplate(restTemplate);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<KeeperTransMeta> requestEntity = new HttpEntity<>(keeperInstanceMeta, headers);
+        Mockito.when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), eq(requestEntity), eq(Void.class))).thenReturn(null);
+        keeperContainerService.resetKeeper(keeperInstanceMeta.getKeeperMeta().getIp(), keeperInstanceMeta.getReplId());
     }
 
     @Test

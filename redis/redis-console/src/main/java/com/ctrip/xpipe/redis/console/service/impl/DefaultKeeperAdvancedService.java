@@ -70,10 +70,10 @@ public class DefaultKeeperAdvancedService extends AbstractConsoleService<RedisTb
 
   }
 
-   @Override
+  @Override
   public List<RedisTbl> getNewKeepers(String dcName, String clusterName, ShardModel shardModel, String srcKeeperContainerIp, String targetKeeperContainerIp) {
     List<RedisTbl> newKeepers = new ArrayList<>();
-   logger.debug("[migrateKeepers] origin keepers {} from cluster:{}, dc:{}, shard:{}",shardModel.getKeepers(), clusterName, dcName, shardModel.getShardTbl().getShardName());
+    logger.debug("[migrateKeepers] origin keepers {} from cluster:{}, dc:{}, shard:{}",shardModel.getKeepers(), clusterName, dcName, shardModel.getShardTbl().getShardName());
     for (RedisTbl keeper : shardModel.getKeepers()) {
       if (!ObjectUtils.equals(keeper.getRedisIp(), srcKeeperContainerIp)) {
         newKeepers.add(keeper);
@@ -84,7 +84,7 @@ public class DefaultKeeperAdvancedService extends AbstractConsoleService<RedisTb
       return null;
     }
 
-    if (newKeepers.size() < 1) {
+    if (newKeepers.isEmpty()) {
       logger.warn("[migrateKeepers] unexpected keepers {} from cluster:{}, dc:{}, shard:{}",
               newKeepers, clusterName, dcName, shardModel.getShardTbl().getShardName());
       return newKeepers;
@@ -108,6 +108,16 @@ public class DefaultKeeperAdvancedService extends AbstractConsoleService<RedisTb
     }
     logger.debug("[migrateKeepers] new keepers {} from cluster:{}, dc:{}, shard:{}",
             newKeepers, clusterName, dcName, shardModel.getShardTbl().getShardName());
+    return newKeepers;
+  }
+
+  @Override
+  public List<RedisTbl> getSwitchMaterNewKeepers(ShardModel shardModel) {
+    List<RedisTbl> newKeepers = new ArrayList<>();
+    for (RedisTbl keeper : shardModel.getKeepers()) {
+      keeper.setMaster(!keeper.isMaster());
+      newKeepers.add(keeper);
+    }
     return newKeepers;
   }
 

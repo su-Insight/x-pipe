@@ -12,7 +12,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 import static com.ctrip.xpipe.redis.core.redis.rdb.parser.RdbDataBytes.*;
 
@@ -147,6 +147,20 @@ public class DefaultRdbParserTest extends AbstractTest implements RdbParseListen
         Assert.assertEquals("SADD set 13927438904093012", redisOps.get(3).toString());
         Assert.assertEquals("SADD set v1", redisOps.get(4).toString());
     }
+    @Test
+    public void testParseList() {
+        ByteBuf byteBuf = Unpooled.wrappedBuffer(listRdbBytes);
+        while (!parser.isFinish()) {
+            parser.read(byteBuf);
+        }
+
+        Assert.assertEquals("SELECT 0", redisOps.get(0).toString());
+        Assert.assertEquals("RPUSH test_0_7743 aaa0_0_530", redisOps.get(1).toString());
+        Assert.assertEquals("RPUSH test_0_7743 aaa0_0_454", redisOps.get(2).toString());
+        Assert.assertEquals("RPUSH test_0_7743 aaa1_1_39", redisOps.get(3).toString());
+        Assert.assertEquals("RPUSH test_0_7743 aaa1_1_244", redisOps.get(4).toString());
+
+    }
 
     @Test
     public void testParseZiplistZSet() {
@@ -217,6 +231,21 @@ public class DefaultRdbParserTest extends AbstractTest implements RdbParseListen
         Assert.assertEquals("XGROUP CREATECONSUMER stream cgroup2 consumer", redisOps.get(14).toString());
     }
 
+    @Test
+    public void testParseCrdtRegister() {
+        ByteBuf byteBuf = Unpooled.wrappedBuffer(crdtRegister);
+        while (!parser.isFinish()) {
+            parser.read(byteBuf);
+        }
+        Assert.assertEquals("SELECT 0", redisOps.get(0).toString());
+        Assert.assertEquals("SET test35 test35", redisOps.get(1).toString());
+        Assert.assertEquals("SET test2 test2", redisOps.get(2).toString());
+        Assert.assertEquals("SET test0 test0", redisOps.get(3).toString());
+        Assert.assertEquals("SET test43 test43", redisOps.get(4).toString());
+        Assert.assertEquals("SET test37 test37", redisOps.get(5).toString());
+        Assert.assertEquals("SET test34 test34", redisOps.get(6).toString());
+    }
+
     @Override
     public void onRedisOp(RedisOp redisOp) {
         logger.info("[onRedisOp] {}", redisOp);
@@ -231,5 +260,10 @@ public class DefaultRdbParserTest extends AbstractTest implements RdbParseListen
     @Override
     public void onFinish(RdbParser<?> parser) {
         logger.info("[onFinish] {}", parser);
+    }
+
+    @Override
+    public void onAuxFinish(Map<String, String> auxMap) {
+        logger.info("[onAuxFinish]");
     }
 }

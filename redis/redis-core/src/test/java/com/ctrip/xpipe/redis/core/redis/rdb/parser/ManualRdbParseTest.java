@@ -13,6 +13,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.Map;
 
 /**
  * @author lishanglin
@@ -20,7 +21,7 @@ import java.nio.ByteBuffer;
  */
 public class ManualRdbParseTest extends AbstractTest implements RdbParseListener {
 
-    private String filePath = "./dump.rdb";
+    private String filePath = "/Users/ccsa/prog/demo/redis-test/redis6379/data/dump6379.rdb";
 
     private DefaultRdbParser rdbParser;
 
@@ -43,7 +44,8 @@ public class ManualRdbParseTest extends AbstractTest implements RdbParseListener
         controllableFile.getFileChannel().position(0);
 
         while (controllableFile.size() > controllableFile.getFileChannel().position()) {
-            ByteBuffer cmdBuffer = ByteBuffer.allocateDirect(4096);
+
+            ByteBuffer cmdBuffer = ByteBuffer.allocateDirect(512);
             byteBuf = Unpooled.wrappedBuffer(cmdBuffer);
             controllableFile.getFileChannel().read(cmdBuffer);
 
@@ -67,6 +69,11 @@ public class ManualRdbParseTest extends AbstractTest implements RdbParseListener
     @Override
     public void onFinish(RdbParser<?> parser) {
         logger.info("[onFinish] {}", parser);
+    }
+
+    @Override
+    public void onAuxFinish(Map<String, String> auxMap) {
+        logger.info("[onAuxFinish] {}", auxMap);
     }
 
 }

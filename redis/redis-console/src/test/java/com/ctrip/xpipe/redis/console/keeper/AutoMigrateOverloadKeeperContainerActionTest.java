@@ -1,5 +1,6 @@
 package com.ctrip.xpipe.redis.console.keeper;
 
+import com.ctrip.xpipe.redis.checker.alert.AlertManager;
 import com.ctrip.xpipe.redis.checker.model.DcClusterShard;
 import com.ctrip.xpipe.redis.checker.model.KeeperContainerUsedInfoModel;
 import com.ctrip.xpipe.redis.console.model.MigrationKeeperContainerDetailModel;
@@ -31,12 +32,15 @@ public class AutoMigrateOverloadKeeperContainerActionTest {
     @Mock
     private ShardModelService shardModelService;
 
+    @Mock
+    private AlertManager alertManager;
+
     @Before
     public void beforeAutoMigrateOverloadKeeperContainerActionTest() {
         ShardModel shardModel = new ShardModel();
         Mockito.when(shardModelService.getShardModel(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.anyBoolean(),  Mockito.anyObject()))
                 .thenReturn(shardModel);
-        Mockito.when(shardModelService.migrateShardKeepers(Mockito.anyString(), Mockito.anyString(),  Mockito.any(), Mockito.anyString(), Mockito.anyString()))
+        Mockito.when(shardModelService.migrateBackupKeeper(Mockito.anyString(), Mockito.anyString(),  Mockito.any(), Mockito.anyString(), Mockito.anyString()))
                 .thenReturn(true);
     }
 
@@ -96,7 +100,7 @@ public class AutoMigrateOverloadKeeperContainerActionTest {
                 .setSrcKeeperContainer(model2).setTargetKeeperContainer(model4).setMigrateKeeperCount(4).setMigrateShards(migrationShards2);
         readyToMigrationKeeperContainers.add(migrationKeeperContainerDetailModel2);
 
-        Mockito.when(shardModelService.migrateShardKeepers(Mockito.anyString(), Mockito.anyString(),  Mockito.any(), Mockito.anyString(), Mockito.anyString())).thenReturn(false);
+        Mockito.when(shardModelService.migrateBackupKeeper(Mockito.anyString(), Mockito.anyString(),  Mockito.any(), Mockito.anyString(), Mockito.anyString())).thenReturn(false);
         action.migrateAllKeepers(readyToMigrationKeeperContainers);
 
         Assert.assertEquals(0, migrationKeeperContainerDetailModel1.getMigrateKeeperCompleteCount());

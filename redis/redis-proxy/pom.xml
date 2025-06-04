@@ -5,13 +5,14 @@
     <parent>
         <artifactId>redis-parent</artifactId>
         <groupId>com.ctrip.framework.xpipe.redis</groupId>
-        <version>1.2.10</version>
+        <version>1.2.13</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>redis-proxy</artifactId>
 
     <properties>
+        <netty4.version>4.1.52.Final</netty4.version>
     </properties>
 
     <dependencies>
@@ -41,11 +42,7 @@
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-all</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>io.netty</groupId>
-            <artifactId>netty-tcnative-boringssl-static</artifactId>
+            <version>${netty4.version}</version>
         </dependency>
 
         <!--netty open ssl -->

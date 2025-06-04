@@ -11,19 +11,22 @@ import com.ctrip.xpipe.netty.ByteBufUtils;
 import com.ctrip.xpipe.netty.NettyPoolUtil;
 import com.ctrip.xpipe.netty.commands.NettyClient;
 import com.ctrip.xpipe.redis.core.entity.*;
-import com.ctrip.xpipe.redis.core.meta.MetaClone;
+import com.ctrip.xpipe.redis.core.meta.clone.MetaCloneFacade;
 import com.ctrip.xpipe.redis.core.protocal.cmd.InfoCommand;
 import com.ctrip.xpipe.redis.core.protocal.cmd.InfoResultExtractor;
 import com.ctrip.xpipe.redis.core.protocal.protocal.CommandBulkStringParser;
-import com.ctrip.xpipe.redis.core.server.FakeRedisServer;
-import com.ctrip.xpipe.redis.core.server.FakeXsyncHandler;
-import com.ctrip.xpipe.redis.core.server.FakeXsyncServer;
+import com.ctrip.xpipe.redis.core.redis.operation.RedisOp;
+import com.ctrip.xpipe.redis.core.redis.rdb.RdbParseListener;
+import com.ctrip.xpipe.redis.core.redis.rdb.RdbParser;
+import com.ctrip.xpipe.redis.core.redis.rdb.parser.AuxOnlyRdbParser;
+import com.ctrip.xpipe.redis.core.server.*;
 import com.ctrip.xpipe.redis.core.transform.DefaultSaxParser;
 import com.ctrip.xpipe.tuple.Pair;
 import com.ctrip.xpipe.utils.FileUtils;
 import com.ctrip.xpipe.utils.IpUtils;
 import com.ctrip.xpipe.utils.StringUtil;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.apache.commons.exec.CommandLine;
 import org.apache.commons.exec.DefaultExecutor;
 import org.apache.commons.exec.ExecuteException;
@@ -40,6 +43,7 @@ import java.net.URL;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author wenchao.meng
@@ -447,6 +451,13 @@ public abstract class AbstractRedisTest extends AbstractTest {
         add(fakeXsyncServer);
         return fakeXsyncServer;
     }
+    protected FakePsyncServer startFakePsyncServer(int serverPort, FakePsyncHandler psyncHandler) throws Exception {
+        FakePsyncServer fakePsyncServer = new FakePsyncServer(serverPort, psyncHandler);
+        fakePsyncServer.initialize();
+        fakePsyncServer.start();
+        add(fakePsyncServer);
+        return fakePsyncServer;
+    }
 
     protected FakeRedisServer startFakeRedisServer() throws Exception {
 
@@ -509,7 +520,7 @@ public abstract class AbstractRedisTest extends AbstractTest {
     protected ClusterMeta differentCluster(String dc, int index) {
 
         DcMeta dcMeta = getDcMeta(dc);
-        ClusterMeta clusterMeta = (ClusterMeta) MetaClone.clone((ClusterMeta) dcMeta.getClusters().values().toArray()[index]);
+        ClusterMeta clusterMeta = MetaCloneFacade.INSTANCE.clone((ClusterMeta) dcMeta.getClusters().values().toArray()[index]);
         clusterMeta.setId(randomString(10));
         clusterMeta.setDbId(randomLong());
 
@@ -614,4 +625,33 @@ public abstract class AbstractRedisTest extends AbstractTest {
         dcMeta.addCluster(clusterMeta);
         return keeper;
     }
+
+    protected Map<String, String> parseRdbAux(byte[] rdb) {
+        AuxOnlyRdbParser parser = new AuxOnlyRdbParser();
+        AtomicReference<Map<String,String>> auxMapRef = new AtomicReference<>();
+        parser.registerListener(new RdbParseListener() {
+            @Override
+            public void onRedisOp(RedisOp redisOp) {
+            }
+
+            @Override
+            public void onAux(String key, String value) {
+            }
+
+            @Override
+            public void onFinish(RdbParser<?> parser) {
+            }
+
+            @Override
+            public void onAuxFinish(Map<String, String> auxMap) {
+                auxMapRef.set(auxMap);
+            }
+        });
+
+        ByteBuf payload = Unpooled.wrappedBuffer(rdb);
+        while (!parser.isFinish()) parser.read(payload);
+
+        return auxMapRef.get();
+    }
+
 }

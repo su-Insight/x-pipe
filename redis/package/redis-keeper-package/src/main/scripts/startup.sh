@@ -72,6 +72,7 @@ function changeAndMakeLogDir(){
     #../xx.conf
     sed -i 's#LOG_FOLDER=\(.*\)#LOG_FOLDER='"$logdir"'#'  $current/../*.conf
     sed -i 's#name="baseDir">.*</Property>#name="baseDir">'$logdir'</Property>#'   $current/../config/log4j2.xml
+    sed -i 's|<property name="baseDir" value="/opt/logs/[^"]*" />|<property name="baseDir" value="'$logdir'" />|'   $current/../config/arthas-logback.xml
 }
 function changeConfigLogFile() {
     current=$1
@@ -105,6 +106,11 @@ function getRole(){
     fi
     echo `toUpper $ENV`
 }
+function tryRemoveJarLog() {
+    logdir=$1
+    appname=$2
+    find "$logdir" -type f -name "$appname_*.log" -delete
+}
 
 #VARS
 FULL_DIR=`getCurrentRealPath`
@@ -113,6 +119,7 @@ SERVER_PORT=`getPortFromPathOrDefault $FULL_DIR 8080`
 JMX_PORT=` expr $SERVER_PORT + 10000 `
 IP=`ifconfig | grep "inet.10" | awk '{print $2}; NR == 1 {exit}'`
 LOG_DIR=/opt/logs/100004376
+`tryRemoveJarLog ${LOG_DIR} ${SERVICE_NAME}`
 
 if [ ! $SERVER_PORT -eq 8080 ];then
     LOG_DIR=${LOG_DIR}_$SERVER_PORT
@@ -136,10 +143,10 @@ then
     JAVA_OPTS="$JAVA_OPTS -Xms${USED_MEM}g -Xmx${USED_MEM}g -Xmn${XMN}g -XX:+AlwaysPreTouch  -XX:MaxDirectMemorySize=${MAX_DIRECT}g"
 elif [ $ENV = "FWS" ] || [ $ENV = "FAT" ];then
     #MB
-    USED_MEM=600
-    XMN=450
-    MAX_DIRECT=100
-    JAVA_OPTS="$JAVA_OPTS -Xms${USED_MEM}m -Xmx${USED_MEM}m -Xmn${XMN}m -XX:+AlwaysPreTouch  -XX:MaxDirectMemorySize=${MAX_DIRECT}m"
+    USED_MEM=`getSafeXmx`
+    XMN=`getSafeXmn $USED_MEM`
+    MAX_DIRECT=2
+    JAVA_OPTS="$JAVA_OPTS -Xms${USED_MEM}g -Xmx${USED_MEM}g -Xmn${XMN}g -XX:+AlwaysPreTouch  -XX:MaxDirectMemorySize=${MAX_DIRECT}g"
 else
     changeConfigLogFile $FULL_DIR log4j2-uat.xml
 

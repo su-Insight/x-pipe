@@ -10,9 +10,15 @@ public interface KeeperContainerUsedInfoAnalyzer {
 
     void updateKeeperContainerUsedInfo(int index, List<KeeperContainerUsedInfoModel> keeperContainerUsedInfoModels);
 
-    List<MigrationKeeperContainerDetailModel> getAllReadyToMigrationKeeperContainers();
-
     List<MigrationKeeperContainerDetailModel> getAllDcReadyToMigrationKeeperContainers();
 
-    Map<Integer, List<KeeperContainerUsedInfoModel>> getAllKeeperContainerUsedInfoModels();
+    List<MigrationKeeperContainerDetailModel> getCurrentDcReadyToMigrationKeeperContainers();
+
+    List<KeeperContainerUsedInfoModel> getAllDcKeeperContainerUsedInfoModelsList();
+
+    List<KeeperContainerUsedInfoModel> getCurrentDcKeeperContainerUsedInfoModelsList();
+
+    List<Integer> getAllDcMaxKeeperContainerFullSynchronizationTime();
+
+    List<Integer> getCurrentDcMaxKeeperContainerFullSynchronizationTime();
 }

@@ -11,7 +11,7 @@ public class RdbConstant {
     }
 
     public static final int REDIS_RDB_VERSION = 9;
-    public static final byte[] REDIS_RDB_MAGIC = new byte[] {'R', 'E', 'D', 'I', 'S'};
+    public static final byte[] REDIS_RDB_MAGIC = new byte[]{'R', 'E', 'D', 'I', 'S'};
 
     // java no unsigned byte, use short instead
     public static final short REDIS_RDB_LEN_6BITLEN = 0b00;
@@ -40,6 +40,19 @@ public class RdbConstant {
     public static final short REDIS_RDB_TYPE_HASH_ZIPLIST = 13;
     public static final short REDIS_RDB_TYPE_LIST_QUICKLIST = 14;
     public static final short REDIS_RDB_TYPE_STREAM_LISTPACKS = 15;
+    public static final short REDIS_RDB_TYPE_CRDT = 200;
+
+    // extend for rordb
+    public static final short REDIS_RORDB_OP_CODE_SWAP_VERSION = 128;
+    public static final short REDIS_RORDB_OP_CODE_SST = 129;
+    public static final short REDIS_RORDB_OP_CODE_KEY_NUM = 130;
+    public static final short REDIS_RORDB_OP_CODE_CUCKOO_FILTER = 131;
+    public static final short REDIS_RORDB_OP_CODE_HASH = 132;
+    public static final short REDIS_RORDB_OP_CODE_SET = 133;
+    public static final short REDIS_RORDB_OP_CODE_ZSET = 134;
+    public static final short REDIS_RORDB_OP_CODE_LIST = 135;
+    public static final short REDIS_RORDB_OP_CODE_BITMAP = 136;
+    public static final short REDIS_RORDB_OP_CODE_LIMIT = 137;
 
     public static final short REDIS_RDB_OP_CODE_MODULE_AUX = 247;
     public static final short REDIS_RDB_OP_CODE_IDLE = 248;
@@ -52,5 +65,6 @@ public class RdbConstant {
     public static final short REDIS_RDB_OP_CODE_EOF = 255;
 
     public static final String REDIS_RDB_AUX_KEY_GTID = "gtid";
+    public static final String REDIS_RDB_AUX_KEY_RORDB = "rordb";
 
 }
