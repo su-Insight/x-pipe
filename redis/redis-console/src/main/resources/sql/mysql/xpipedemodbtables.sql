@@ -231,6 +231,7 @@ CREATE TABLE `KEEPERCONTAINER_TBL` (
   `DataChange_LastTime` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'last modified time',
   `deleted` tinyint(1) NOT NULL DEFAULT '0' COMMENT 'deleted or not',
   `keepercontainer_org_id` bigint(20) unsigned NOT NULL DEFAULT '0' COMMENT 'organization id of keeper container',
+  `keepercontainer_disk_type` varchar(64) not null default 'default'
   PRIMARY KEY (`keepercontainer_id`),
   KEY `DataChange_LastTime` (`DataChange_LastTime`),
   KEY `keepercontainer_dc` (`keepercontainer_dc`)
@@ -413,6 +414,7 @@ CREATE TABLE `sentinel_group_tbl`
     `sentinel_group_id`   bigint(20) NOT NULL AUTO_INCREMENT COMMENT '哨兵组id',
     `cluster_type`        varchar(40)  NOT NULL DEFAULT '' COMMENT '该哨兵组适用的集群类型',
     `deleted`             tinyint(4) NOT NULL DEFAULT '0' COMMENT '是否删除',
+    `active`             tinyint(4) NOT NULL DEFAULT '1' COMMENT '是否有效',
     `datachange_lasttime` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP (3) COMMENT '更新时间',
     `sentinel_description` varchar(100)  NOT NULL DEFAULT '',
     PRIMARY KEY (`sentinel_group_id`),

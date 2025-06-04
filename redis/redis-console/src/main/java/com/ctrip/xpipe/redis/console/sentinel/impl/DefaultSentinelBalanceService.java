@@ -1,7 +1,7 @@
 package com.ctrip.xpipe.redis.console.sentinel.impl;
 
 import com.ctrip.xpipe.cluster.ClusterType;
-import com.ctrip.xpipe.redis.checker.cache.TimeBoundCache;
+import com.ctrip.xpipe.cache.TimeBoundCache;
 import com.ctrip.xpipe.redis.console.config.ConsoleConfig;
 import com.ctrip.xpipe.redis.console.model.SentinelGroupModel;
 import com.ctrip.xpipe.redis.console.sentinel.SentinelBalanceService;
@@ -130,7 +130,7 @@ public class DefaultSentinelBalanceService implements SentinelBalanceService {
         long minCnt = Long.MAX_VALUE;
         SentinelGroupModel idealSentinel = null;
         for (SentinelGroupModel sentinel: sentinels) {
-            if (sentinel.getShardCount() < minCnt) {
+            if (sentinel.isActive() && sentinel.getShardCount() < minCnt) {
                 minCnt = sentinel.getShardCount();
                 idealSentinel = sentinel;
             }

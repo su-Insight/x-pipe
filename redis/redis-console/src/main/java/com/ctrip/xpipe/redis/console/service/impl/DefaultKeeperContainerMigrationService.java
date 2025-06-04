@@ -1,5 +1,6 @@
 package com.ctrip.xpipe.redis.console.service.impl;
 
+import com.ctrip.xpipe.monitor.CatEventMonitor;
 import com.ctrip.xpipe.redis.checker.model.DcClusterShard;
 import com.ctrip.xpipe.redis.console.model.MigrationKeeperContainerDetailModel;
 import com.ctrip.xpipe.redis.console.model.ShardModel;
@@ -15,6 +16,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.ctrip.xpipe.redis.console.keeper.AutoMigrateOverloadKeeperContainerAction.*;
 
 @Component
 public class DefaultKeeperContainerMigrationService implements KeeperContainerMigrationService {
@@ -41,7 +44,6 @@ public class DefaultKeeperContainerMigrationService implements KeeperContainerMi
             List<DcClusterShard> migrateShards = keeperContainer.getMigrateShards();
             if (CollectionUtils.isEmpty(migrateShards)) continue;
 
-
             String srcKeeperContainerIp = keeperContainer.getSrcKeeperContainer().getKeeperIp();
             for (DcClusterShard migrateShard : migrateShards) {
                 ShardModel shardModel = shardModelService.getShardModel(migrateShard.getDcId(),
@@ -52,9 +54,35 @@ public class DefaultKeeperContainerMigrationService implements KeeperContainerMi
                 }
                 logger.debug("[beginMigrateKeeperContainers] begin migrate shard {} from srcKeeperContainer:{} to targetKeeperContainer:{}",
                         migrateShard, srcKeeperContainerIp, keeperContainer.getTargetKeeperContainer().getKeeperIp());
-                if (shardModelService.migrateShardKeepers(migrateShard.getDcId(), migrateShard.getClusterId(), shardModel,
-                        srcKeeperContainerIp, keeperContainer.getTargetKeeperContainer().getKeeperIp()))
-                    keeperContainer.migrateKeeperCompleteCountIncrease();
+                String event;
+                if (keeperContainer.isSwitchActive()) {
+                    if (shardModelService.switchMaster(migrateShard.getDcId(), migrateShard.getClusterId(), shardModel)) {
+                        keeperContainer.migrateKeeperCompleteCountIncrease();
+                        event = KEEPER_SWITCH_MASTER_SUCCESS;
+                    } else {
+                        event = KEEPER_SWITCH_MASTER_FAIL;
+                    }
+                }else if (keeperContainer.isKeeperPairOverload()) {
+                    if (shardModelService.migrateShardKeepers(migrateShard.getDcId(), migrateShard.getClusterId(), shardModel,
+                            srcKeeperContainerIp, keeperContainer.getTargetKeeperContainer().getKeeperIp())) {
+                        keeperContainer.migrateKeeperCompleteCountIncrease();
+                        event = KEEPER_MIGRATION_BACKUP_SUCCESS;
+                    } else {
+                        event = KEEPER_MIGRATION_BACKUP_FAIL;
+                    }
+                }else {
+                    try {
+                        shardModelService.migrateAutoBalanceKeepers(migrateShard.getDcId(), migrateShard.getClusterId(), shardModel,
+                                srcKeeperContainerIp, keeperContainer.getTargetKeeperContainer().getKeeperIp());
+                        keeperContainer.migrateKeeperCompleteCountIncrease();
+                        event = KEEPER_MIGRATION_ACTIVE_START_SUCCESS;
+                    } catch (Throwable e) {
+                        event = KEEPER_MIGRATION_ACTIVE_START_FAIL;
+                    }
+                }
+                CatEventMonitor.DEFAULT.logEvent(event, String.format("dc:%s, cluster:%s, shard:%s, src:%s, target:%s",
+                        migrateShard.getDcId(), migrateShard.getClusterId(), migrateShard.getShardId(), srcKeeperContainerIp,
+                        keeperContainer.getTargetKeeperContainer().getKeeperIp()));
             }
         }
         isBegin.set(false);

@@ -1,10 +1,12 @@
 package com.ctrip.xpipe.redis.proxy.tunnel;
 
 import com.ctrip.xpipe.api.factory.ObjectFactory;
+import com.ctrip.xpipe.api.lifecycle.Startable;
 import com.ctrip.xpipe.api.observer.Observable;
 import com.ctrip.xpipe.api.proxy.ProxyConnectProtocol;
 import com.ctrip.xpipe.concurrent.AbstractExceptionLogTask;
 import com.ctrip.xpipe.lifecycle.LifecycleHelper;
+import com.ctrip.xpipe.redis.core.exception.NoResourceException;
 import com.ctrip.xpipe.redis.proxy.Tunnel;
 import com.ctrip.xpipe.redis.proxy.config.ProxyConfig;
 import com.ctrip.xpipe.redis.proxy.monitor.TunnelMonitorManager;
@@ -82,20 +84,27 @@ public class DefaultTunnelManager implements TunnelManager {
     protected void doClean() {
         Set<Channel> keys = Sets.newHashSet(cache.keySet());
         for(Channel channel : keys) {
-            if (!channel.isActive()) {
-                Tunnel tunnel = cache.remove(channel);
-                try {
-                    tunnel.release();
-                } catch (Exception e) {
-                    logger.error("[cleaner] tunnel release error: ", e);
-                }
-            } else {
+            try {
+                if (!channel.isActive()) {
+                    Tunnel tunnel = cache.remove(channel);
+                    try {
+                        if (tunnel != null) {
+                            tunnel.release();
+                        }
+                    } catch (Exception e) {
+                        logger.error("[cleaner] tunnel release tunnel{} error", tunnel, e);
+                    }
+                } else {
 
-                Tunnel tunnel = cache.get(channel);
-                logger.info("[doClean] check tunnel, {}", tunnel.getTunnelMeta());
-                if (tunnel.getState().equals(new TunnelClosed(null))) {
-                    cache.remove(channel);
+                    Tunnel tunnel = cache.get(channel);
+                    if (!tunnel.getLifecycleState().isStarted()) continue;
+                    logger.info("[doClean] check tunnel, {}", tunnel.getTunnelMeta());
+                    if (tunnel.getState().equals(new TunnelClosed(null))) {
+                        cache.remove(channel);
+                    }
                 }
+            } catch (Throwable th){
+                logger.error("[cleaner] tunnel release channel{} error", channel, th);
             }
         }
     }
@@ -108,8 +117,12 @@ public class DefaultTunnelManager implements TunnelManager {
                 return new DefaultTunnel(frontendChannel, protocol, config, proxyResourceManager, tunnelMonitorManager);
             }
         });
-        initAndStart(tunnel);
         tunnel.addObserver(this);
+        try {
+            initAndStart(tunnel);
+        } catch (Throwable th) {
+            logger.warn("[create][fail] {}", tunnel.identity());
+        }
 
         return tunnel;
     }
@@ -117,13 +130,17 @@ public class DefaultTunnelManager implements TunnelManager {
     private void initAndStart(Tunnel tunnel) {
         try {
             LifecycleHelper.initializeIfPossible(tunnel);
+        } catch (NoResourceException e){
+            logger.error("[initAndStart][start] {}", e.getMessage());
         } catch (Exception e) {
-            logger.error("[initAndStart][init] ", e);
+            logger.error("[initAndStart][init]", e);
         }
         try {
             LifecycleHelper.startIfPossible(tunnel);
+        } catch (NoResourceException e) {
+            logger.error("[initAndStart][start] {}", e.getMessage());
         } catch (Exception e) {
-            logger.error("[initAndStart][start] ", e);
+            logger.error("[initAndStart][start]", e);
         }
     }
 
@@ -183,13 +200,22 @@ public class DefaultTunnelManager implements TunnelManager {
         TunnelStateChangeEvent event = (TunnelStateChangeEvent) args;
 
         if(event.getCurrent() instanceof TunnelClosed) {
-            logger.info("[update] tunnel closed, remove from tunnel manager");
+            logger.info("[update][tunnel closed, remove from tunnel manager] {}", tunnel.identity());
             remove(tunnel.frontendChannel());
 
         }
     }
 
     // Unit Test
+
+    @VisibleForTesting
+    protected void setLifecycleStateStarted() {
+        Set<Channel> keys = Sets.newHashSet(cache.keySet());
+        for(Channel channel : keys) {
+            Tunnel tunnel = cache.get(channel);
+            tunnel.getLifecycleState().setPhaseName(Startable.PHASE_NAME_END);
+        }
+    }
 
     @VisibleForTesting
     public DefaultTunnelManager setConfig(ProxyConfig config) {

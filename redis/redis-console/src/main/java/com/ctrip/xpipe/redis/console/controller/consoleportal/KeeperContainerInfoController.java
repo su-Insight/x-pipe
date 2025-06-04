@@ -1,6 +1,7 @@
 package com.ctrip.xpipe.redis.console.controller.consoleportal;
 
 import com.ctrip.xpipe.redis.checker.controller.result.RetMessage;
+import com.ctrip.xpipe.redis.checker.model.KeeperContainerUsedInfoModel;
 import com.ctrip.xpipe.redis.console.controller.AbstractConsoleController;
 import com.ctrip.xpipe.redis.console.keeper.KeeperContainerUsedInfoAnalyzer;
 import com.ctrip.xpipe.redis.console.model.KeeperContainerInfoModel;
@@ -10,6 +11,8 @@ import com.ctrip.xpipe.redis.console.service.KeeperContainerService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 @RestController
@@ -72,7 +75,7 @@ public class KeeperContainerInfoController extends AbstractConsoleController {
 
     @RequestMapping(value = "/keepercontainers/overload/all", method = RequestMethod.GET)
     public List<MigrationKeeperContainerDetailModel> getAllOverloadKeeperContainers() {
-        return analyzer.getAllReadyToMigrationKeeperContainers();
+        return analyzer.getAllDcReadyToMigrationKeeperContainers();
     }
 
 
@@ -85,11 +88,26 @@ public class KeeperContainerInfoController extends AbstractConsoleController {
     public RetMessage beginToMigrateOverloadKeeperContainers(@RequestBody List<MigrationKeeperContainerDetailModel> keeperContainerDetailModels) {
         logger.info("begin to migrate over load keeper containers {}", keeperContainerDetailModels);
         try {
-            keeperContainerMigrationService.beginMigrateKeeperContainers(keeperContainerDetailModels);
+//            keeperContainerMigrationService.beginMigrateKeeperContainers(keeperContainerDetailModels);
         } catch (Throwable th) {
             logger.warn("migrate over load keeper containers {} fail by {}", keeperContainerDetailModels, th.getMessage());
             return RetMessage.createFailMessage(th.getMessage());
         }
         return RetMessage.createSuccessMessage();
     }
+
+    @RequestMapping(value = "/keepercontainer/overload/info/lasted", method = RequestMethod.GET)
+    public List<KeeperContainerUsedInfoModel>  getLastedAllReadyMigrateKeeperContainers() {
+        return analyzer.getAllDcKeeperContainerUsedInfoModelsList();
+    }
+
+    @RequestMapping(value = "/keepercontainer/max/fullSynchronizationTime", method = RequestMethod.GET)
+    public RetMessage getMaxKeeperContainerFullSynchronizationTime() {
+        int max = analyzer.getAllDcMaxKeeperContainerFullSynchronizationTime().stream()
+                .mapToInt(Integer::intValue)
+                .max()
+                .orElse(0);
+        return RetMessage.createSuccessMessage(String.valueOf(max));
+    }
+
 }

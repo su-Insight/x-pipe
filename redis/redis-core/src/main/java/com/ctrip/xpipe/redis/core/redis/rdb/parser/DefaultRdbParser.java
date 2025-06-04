@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author lishanglin
@@ -29,6 +30,8 @@ public class DefaultRdbParser extends AbstractRdbParser<Void> implements RdbPars
     private RdbParseContext.RdbType currentType;
 
     private short rdbVersion;
+
+    private AtomicBoolean auxFinished = new AtomicBoolean(false);
 
     private static final Logger logger = LoggerFactory.getLogger(DefaultRdbParser.class);
 
@@ -85,7 +88,13 @@ public class DefaultRdbParser extends AbstractRdbParser<Void> implements RdbPars
 
                 case READ_TYPE:
                     short type = byteBuf.readUnsignedByte();
-                    currentType = RdbParseContext.RdbType.findByCode(type);
+                    RdbParseContext.RdbType newType = RdbParseContext.RdbType.findByCode(type);
+                    if (currentType == RdbParseContext.RdbType.AUX && newType != RdbParseContext.RdbType.AUX) {
+                        auxFinished.set(true);
+                        notifyAuxEnd(rdbParseContext.getAllAux());
+                    }
+
+                    currentType = newType;
 
                     getLogger().debug("[read][type] {}", currentType);
                     if (null == currentType) {
@@ -152,6 +161,10 @@ public class DefaultRdbParser extends AbstractRdbParser<Void> implements RdbPars
         return null;
     }
 
+    protected boolean isAuxFinish() {
+        return auxFinished.get();
+    }
+
     private int checkMagic(ByteBuf byteBuf, int checkIdx) {
         int readCnt = 0;
         while (checkIdx + readCnt < RdbConstant.REDIS_RDB_MAGIC.length && byteBuf.readableBytes() > 0) {
@@ -195,6 +208,7 @@ public class DefaultRdbParser extends AbstractRdbParser<Void> implements RdbPars
         super.reset();
         if (temp != null) {
             temp.release();
+            temp = null;
         }
         if (rdbParseContext != null) {
             rdbParseContext.reset();

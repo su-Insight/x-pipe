@@ -7,7 +7,6 @@ import com.ctrip.xpipe.codec.JsonCodec;
 import com.ctrip.xpipe.redis.checker.healthcheck.actions.interaction.DcClusterDelayMarkDown;
 import com.ctrip.xpipe.redis.console.config.ConsoleConfig;
 import com.ctrip.xpipe.redis.console.config.model.BeaconOrgRoute;
-import com.ctrip.xpipe.redis.console.model.KeeperContainerOverloadStandardModel;
 import com.ctrip.xpipe.redis.console.util.HickwallMetricInfo;
 import com.ctrip.xpipe.redis.core.config.AbstractCoreConfig;
 import com.ctrip.xpipe.redis.core.meta.QuorumConfig;
@@ -122,9 +121,9 @@ public class DefaultConsoleConfig extends AbstractCoreConfig implements ConsoleC
     private static final String KEY_MIGRATION_RESULT_REPORT_TOKEN = "migration.result.report.token";
     private static final String KEY_MIGRATION_RESULT_REPORT_OPEN = "migration.result.report.open";
     private static final String KEY_MIGRATION_RESULT_REPORT_INTERVAL_MILLI = "migration.result.report.interval.milli";
-
-    private static final String KEY_CONSOLE_KEEPER_CONTAINER_OVERLOAD_STANDARD = "console.keepercontainer.overlaod.standard";
-
+    private static final String KEY_CONSOLE_KEEPER_PAIR_OVERLOAD_FACTOR = "console.keeper.container.pair.overload.standard.factor";
+    private static final String KEY_CONSOLE_KEEPER_CONTAINER_DISK_OVERLOAD_FACTOR = "console.keeper.container.disk.overload.factor";
+    private static final String KEY_CONSOLE_KEEPER_CONTAINER_IO_RATE = "console.keeper.container.io.rate";
     private static final String KEY_CONSOLE_AUTO_MIGRATE_OVERLOAD_KEEPER_CONTAINER_OPEN = "console.auto.migrate.overload.keeper.container.open";
     private static final String KEY_CONSOLE_AUTO_MIGRATE_OVERLOAD_KEEPER_CONTAINER_INTERVAL_MILLI = "console.auto.migrate.overload.keeper.container.interval.milli";
 
@@ -589,7 +588,7 @@ public class DefaultConsoleConfig extends AbstractCoreConfig implements ConsoleC
 
     @Override
     public int getCheckerCurrentDcAllMetaRefreshIntervalMilli() {
-        return getIntProperty(KEY_CHECKER_CURRENT_DC_ALL_META_REFRESH_INTERVAL, 600000);
+        return getIntProperty(KEY_CHECKER_CURRENT_DC_ALL_META_REFRESH_INTERVAL, 60 * 1000);
     }
 
     @Override
@@ -719,7 +718,7 @@ public class DefaultConsoleConfig extends AbstractCoreConfig implements ConsoleC
 
     @Override
     public int getKeeperCheckerIntervalMilli() {
-        return getIntProperty(KEY_KEEPER_CHECKER_INTERVAL, 1800 * 1000);
+        return getIntProperty(KEY_KEEPER_CHECKER_INTERVAL, 60 * 1000);
     }
 
     @Override
@@ -781,9 +780,18 @@ public class DefaultConsoleConfig extends AbstractCoreConfig implements ConsoleC
     }
 
     @Override
-    public Map<String,KeeperContainerOverloadStandardModel>  getKeeperContainerOverloadStandards() {
-        String property = getProperty(KEY_CONSOLE_KEEPER_CONTAINER_OVERLOAD_STANDARD, "{}");
-        return JsonCodec.INSTANCE.decode(property, new GenericTypeReference<Map<String,KeeperContainerOverloadStandardModel>>() {});
+    public double getKeeperPairOverLoadFactor() {
+        return getFloatProperty(KEY_CONSOLE_KEEPER_PAIR_OVERLOAD_FACTOR, 0.25F);
+    }
+
+    @Override
+    public double getKeeperContainerDiskOverLoadFactor() {
+        return getFloatProperty(KEY_CONSOLE_KEEPER_CONTAINER_DISK_OVERLOAD_FACTOR, 0.8F);
+    }
+
+    @Override
+    public double getKeeperContainerIoRate() {
+        return getFloatProperty(KEY_CONSOLE_KEEPER_CONTAINER_IO_RATE, 500F);
     }
 
 }

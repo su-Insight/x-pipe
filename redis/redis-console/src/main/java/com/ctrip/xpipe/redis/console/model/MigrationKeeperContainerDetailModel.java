@@ -4,6 +4,7 @@ import com.ctrip.xpipe.redis.checker.model.DcClusterShard;
 import com.ctrip.xpipe.redis.checker.model.KeeperContainerUsedInfoModel;
 
 import java.io.Serializable;
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 
@@ -17,23 +18,40 @@ public class MigrationKeeperContainerDetailModel implements Serializable {
 
     private int migrateKeeperCompleteCount = 0;
 
+    private boolean switchActive;
+
+    private boolean keeperPairOverload;
+
+    private String srcOverLoadKeeperPairIp;
+
+    private String cause;
+
     List<DcClusterShard> migrateShards;
+
+    private Date updateTime;
 
     public MigrationKeeperContainerDetailModel() {
 
     }
 
-    public MigrationKeeperContainerDetailModel(KeeperContainerUsedInfoModel srcKeeperContainer, KeeperContainerUsedInfoModel targetKeeperContainer,
-                                               int migrateKeeperCount, List<DcClusterShard> migrateShards) {
+    public MigrationKeeperContainerDetailModel(KeeperContainerUsedInfoModel srcKeeperContainer,
+                                               KeeperContainerUsedInfoModel targetKeeperContainer,
+                                               boolean switchActive,
+                                               boolean keeperPairOverload,
+                                               String cause,
+                                               List<DcClusterShard> migrateShards) {
         this.srcKeeperContainer = srcKeeperContainer;
         this.targetKeeperContainer = targetKeeperContainer;
-        this.migrateKeeperCount = migrateKeeperCount;
+        this.switchActive = switchActive;
+        this.keeperPairOverload = keeperPairOverload;
+        this.cause = cause;
         this.migrateShards = migrateShards;
     }
 
     public void addReadyToMigrateShard( DcClusterShard shard) {
         migrateShards.add(shard);
         migrateKeeperCount++;
+        this.updateTime = new Date(System.currentTimeMillis() + 8 * 60 * 60 * 1000);
     }
 
     public void migrateShardCompletion(DcClusterShard dcClusterShard) {
@@ -77,12 +95,54 @@ public class MigrationKeeperContainerDetailModel implements Serializable {
         return this;
     }
 
+    public String getSrcOverLoadKeeperPairIp() {
+        return srcOverLoadKeeperPairIp;
+    }
+
+    public MigrationKeeperContainerDetailModel setSrcOverLoadKeeperPairIp(String srcOverLoadKeeperPairIp) {
+        this.srcOverLoadKeeperPairIp = srcOverLoadKeeperPairIp;
+        return this;
+    }
+
+    public boolean isSwitchActive() {
+        return switchActive;
+    }
+
+    public void setSwitchActive(boolean switchActive) {
+        this.switchActive = switchActive;
+    }
+
+    public boolean isKeeperPairOverload() {
+        return keeperPairOverload;
+    }
+
+    public void setKeeperPairOverload(boolean keeperPairOverload) {
+        this.keeperPairOverload = keeperPairOverload;
+    }
+
+    public String getCause() {
+        return cause;
+    }
+
+    public void setCause(String cause) {
+        this.cause = cause;
+    }
+
     public void migrateKeeperCountIncrease() {
         this.migrateKeeperCount++;
     }
 
     public void migrateKeeperCompleteCountIncrease() {
         this.migrateKeeperCompleteCount++;
+    }
+
+    public Date getUpdateTime() {
+        return updateTime;
+    }
+
+    public MigrationKeeperContainerDetailModel setUpdateTime(Date updateTime) {
+        this.updateTime = updateTime;
+        return this;
     }
 
     @Override
@@ -113,7 +173,11 @@ public class MigrationKeeperContainerDetailModel implements Serializable {
                 ", targetKeeperContainer=" + targetKeeperContainer +
                 ", migrateKeeperCount=" + migrateKeeperCount +
                 ", migrateKeeperCompleteCount=" + migrateKeeperCompleteCount +
+                ", switchActive=" + switchActive +
+                ", keeperPairOverload=" + keeperPairOverload +
+                ", cause='" + cause + '\'' +
                 ", migrateShards=" + migrateShards +
+                ", updateTime=" + updateTime +
                 '}';
     }
 }
